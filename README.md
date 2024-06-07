@@ -25,4 +25,4 @@
 
 **实验效果**
 
-![](OutputResult/FinalResult.gif)
+![](OutputResult/Result.gif)
