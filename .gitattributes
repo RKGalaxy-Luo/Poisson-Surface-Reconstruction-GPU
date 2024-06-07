@@ -5,13 +5,13 @@
 * linguist-detectable
 *.cu linguist-language=Cuda
 *.cuh linguist-language=Cuda
-*.h linguist-language=C
+*.c llinguist-language=C
+*.h linguist-language=C++
 *.hpp linguist-language=C++
 *.cpp linguist-language=C++
 *.pcd linguist-detectable=false
 *.ply linguist-detectable=false
 *.txt linguist-detectable=false
-*.c linguist-detectable=false
 
 ###############################################################################
 # Set default behavior for command prompt diff.
