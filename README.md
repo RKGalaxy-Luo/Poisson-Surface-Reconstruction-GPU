@@ -24,5 +24,3 @@
 ​	循环运行500次平均时间为272.911ms。
 
 **实验效果**
-
-![22133d908eb90e58a50e923a2614383a](E:\QQ\Tencent Files\Tencent Files\954910694\nt_qq\nt_data\Pic\2024-06\Ori\22133d908eb90e58a50e923a2614383a.png)
