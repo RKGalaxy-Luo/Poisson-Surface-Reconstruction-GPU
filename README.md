@@ -25,4 +25,4 @@
 
 **实验效果**
 
-https://github.com/RKGalaxy-Luo/Poisson-Surface-Reconstruction-GPU/tree/master/OutputResult/RunningResult.gif
+![image](https://github.com/RKGalaxy-Luo/Poisson-Surface-Reconstruction-GPU/tree/master/OutputResult/RunningResult.gif)
