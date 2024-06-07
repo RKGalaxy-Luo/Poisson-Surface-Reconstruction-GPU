@@ -25,4 +25,4 @@
 
 **实验效果**
 
-![](OutputResult/ShaderResult.gif)
+![](OutputResult/Result.gif)
