@@ -12,6 +12,7 @@
 *.pcd linguist-detectable=false
 *.ply linguist-detectable=false
 *.txt linguist-detectable=false
+glad.c linguist-vendored
 
 ###############################################################################
 # Set default behavior for command prompt diff.
