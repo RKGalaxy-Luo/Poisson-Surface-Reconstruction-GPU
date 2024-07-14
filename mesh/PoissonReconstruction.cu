@@ -30,10 +30,6 @@ __global__ void SparseSurfelFusion::device::buildOrientedDenseSurfelKernel(pcl::
 	surfel[idx].NormalAndRadius.y = normal[idx].normal_y;
 	surfel[idx].NormalAndRadius.z = normal[idx].normal_z;
 	surfel[idx].NormalAndRadius.w = normal[idx].curvature;
-	//printf("index = %hu\n", idx);
-	//if (idx == pointsNum - 1) {
-	//	printf("last normal = (%.9f, %.9f, %.9f)\n", surfel[idx].NormalAndRadius.x, surfel[idx].NormalAndRadius.y, surfel[idx].NormalAndRadius.z);
-	//}
 }
 
 void SparseSurfelFusion::PoissonReconstruction::buildDenseSurfel(DeviceBufferArray<pcl::PointXYZ>& PointCloudDevice, DeviceBufferArray<DepthSurfel>& DenseSurfel, cudaStream_t stream)

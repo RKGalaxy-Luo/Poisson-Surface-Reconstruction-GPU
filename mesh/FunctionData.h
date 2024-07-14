@@ -88,10 +88,10 @@ namespace SparseSurfelFusion {
             this->res = BinaryNode<double>::CumulativeCenterCount(this->depth);
             this->res2 = (1 << (this->depth + 1)) + 1;
             this->baseFunctions = new PPolynomial<Degree + 1>[res];
-            // Scale the function so that it has:
-            // 0] Value 1 at 0
-            // 1] Integral equal to 1
-            // 2] Square integral equal to 1
+            // 缩放函数使其:
+            // 0] 在0处的值为1
+            // 1] 积分为1
+            // 2] 平方积分为1
             switch (normalize) {
             case 2:
                 baseFunction = F / sqrt((F * F).integral(F.polys[0].start, F.polys[F.polyCount - 1].start));

@@ -24,7 +24,7 @@ namespace SparseSurfelFusion {
 	}
 }
 
-__global__ void SparseSurfelFusion::device::GenerateSingleNodeLaplacian(DeviceArrayView<double> dot_F_F, DeviceArrayView<double> dot_F_D2F, DeviceArrayView<int> encodeNodeIndexInFunction, DeviceArrayView<OctNode> NodeArray, const unsigned int begin, const unsigned int calculatedNodeNum, int* rowCount, int* colIndex, float* val)
+__global__ void SparseSurfelFusion::device::GenerateSingleNodeLaplacian(const unsigned int depth, DeviceArrayView<double> dot_F_F, DeviceArrayView<double> dot_F_D2F, DeviceArrayView<int> encodeNodeIndexInFunction, DeviceArrayView<OctNode> NodeArray, const unsigned int begin, const unsigned int calculatedNodeNum, int* rowCount, int* colIndex, float* val)
 {
 	const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= calculatedNodeNum) return;
@@ -37,6 +37,10 @@ __global__ void SparseSurfelFusion::device::GenerateSingleNodeLaplacian(DeviceAr
 	idxO_1[1] = (encodeIndex / device::decodeOffset_1) % device::decodeOffset_1;
 	idxO_1[2] = encodeIndex / device::decodeOffset_2;
 
+	//if (depth == 1) {
+	//	printf("idx = %d   idxO_1 = (%d, %d, %d)\n", idx, idxO_1[0], idxO_1[1], idxO_1[2]);
+	//}
+
 	for (int i = 0; i < 27; i++) {
 		int neighbor = NodeArray[offset].neighs[i];	// 节点的邻居节点
 		if (neighbor == -1) continue;
@@ -46,14 +50,15 @@ __global__ void SparseSurfelFusion::device::GenerateSingleNodeLaplacian(DeviceAr
 		idxO_2[0] = encodeIndex % device::decodeOffset_1;
 		idxO_2[1] = (encodeIndex / device::decodeOffset_1) % device::decodeOffset_1;
 		idxO_2[2] = encodeIndex / device::decodeOffset_2;
+		//if (depth == 1 && idx == 0) {
+		//	printf("idx = %d   offset = %d   neighborIdx = %d   neighbor = %d   idxO_2 = (%d, %d, %d)\n", idx, offset, i, neighbor, idxO_2[0], idxO_2[1], idxO_2[2]);
+		//}
 		int scratch[3];
 		scratch[0] = idxO_1[0] * device::res + idxO_2[0];
 		scratch[1] = idxO_1[1] * device::res + idxO_2[1];
 		scratch[2] = idxO_1[2] * device::res + idxO_2[2];
 
 		double LaplacianEntryValue = GetLaplacianEntry(dot_F_F, dot_F_D2F, scratch);
-
-
 		if (fabs(LaplacianEntryValue) > device::eps) {
 			colIndex[colStart + count] = colIdx;
 			val[colStart + count] = LaplacianEntryValue;
@@ -137,7 +142,7 @@ void SparseSurfelFusion::LaplacianSolver::LaplacianCGSolver(const int* BaseAddre
 
 		dim3 block_1(128);
 		dim3 grid_1(divUp(CurrentLevelNodesNum, block_1.x));
-		device::GenerateSingleNodeLaplacian << <grid_1, block_1, 0, stream >> > (dot_F_F, dot_F_D2F, encodeNodeIndexInFunction, NodeArray, BaseAddressArray[depth], NodeArrayCount[depth], rowCount + 1, colIndex, val);
+		device::GenerateSingleNodeLaplacian << <grid_1, block_1, 0, stream >> > (depth, dot_F_F, dot_F_D2F, encodeNodeIndexInFunction, NodeArray, BaseAddressArray[depth], NodeArrayCount[depth], rowCount + 1, colIndex, val);
 
 		int* RowBaseAddress = NULL;	//【中间变量，用完即释放】记录当前节点之前的节点(及其邻居)，满足Laplace元素值的，总共有多少个(不计算当前节点，并且是从index=1开始，而非index=0)
 		CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&RowBaseAddress), sizeof(int) * (CurrentLevelNodesNum + 2), stream));
@@ -197,6 +202,25 @@ void SparseSurfelFusion::LaplacianSolver::LaplacianCGSolver(const int* BaseAddre
 
 		assert(MergedValSelectedNum_Host == valNums);		// 顺便Check一下压缩的是否正确
 		assert(MergedColIndexSelectedNum_Host == valNums);	// 顺便Check一下压缩的是否正确
+
+		//if (depth == 1) {
+		//	std::vector<int> MergedColIndexHost;
+		//	MergedColIndexHost.resize(valNums);
+		//	std::vector<float> MergedValHost;
+		//	MergedValHost.resize(valNums);
+		//	CHECKCUDA(cudaMemcpyAsync(MergedColIndexHost.data(), MergedColIndex, sizeof(int) * valNums, cudaMemcpyDeviceToHost, stream));
+		//	CHECKCUDA(cudaMemcpyAsync(MergedValHost.data(), MergedVal, sizeof(float) * valNums, cudaMemcpyDeviceToHost, stream));
+		//	printf("valNum = %d\n", valNums);
+		//	for (int i = 0; i < valNums; i++) {
+		//		if ((i + 1) % 8 == 0) {
+		//			printf("%10.5f\n",MergedValHost[i]);
+		//		}
+		//		else {
+		//			printf("%10.5f   ",MergedValHost[i]);
+		//		}
+		//	}
+		//}
+
 #ifdef CHECK_MESH_BUILD_TIME_COST
 		printf("第 %d 层节点的", depth);
 #endif // CHECK_MESH_BUILD_TIME_COST

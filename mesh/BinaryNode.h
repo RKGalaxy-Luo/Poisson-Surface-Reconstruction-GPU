@@ -15,7 +15,12 @@ namespace SparseSurfelFusion {
     public:
         /**     2^depth                                         */
         __host__ __device__ static inline int CenterCount(int depth) { return 1 << depth; }
-        /**     2^0 + 2^1 + 2^maxDepth = 2^(maxDepth+1) - 1     */
+        /**
+         * \brief 求和2^0 + 2^1 + ... + 2^maxDepth = 2^(maxDepth+1) - 1.
+         * 
+         * \param maxDepth 最大深度
+         * \return 
+         */
         __host__ __device__ static inline int CumulativeCenterCount(int maxDepth) { return (1 << (maxDepth + 1)) - 1; }
         __host__ __device__ static inline int Index(int depth, int offSet) { return (1 << depth) + offSet - 1; }
         __host__ __device__ static inline int CornerIndex(int maxDepth, int depth, int offSet, int forwardCorner)

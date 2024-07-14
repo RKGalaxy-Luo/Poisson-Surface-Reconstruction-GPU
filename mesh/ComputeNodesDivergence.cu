@@ -164,7 +164,6 @@ void SparseSurfelFusion::ComputeNodesDivergence::computeCoarserNodesDivergence(c
 
 	Divergence.ResizeArrayOrException(NodeArray.Size());	// 与NodeArray大小一致
 	const unsigned int CalculatedNodeNum = right - left;	// 参与计算的节点数量
-	//printf("left = %d   right = %d\n", left, right);
 	for (int i = left; i < CalculatedNodeNum; i++) {			// [0, CoarserLevelNum]层节点总数
 		int depth = 0;	// 当前节点深度
 		for (int j = 0; j <= COARSER_DIVERGENCE_LEVEL_NUM; j++) {

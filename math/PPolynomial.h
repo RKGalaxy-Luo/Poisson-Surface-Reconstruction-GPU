@@ -11,16 +11,25 @@
 #include <device_launch_parameters.h>
 namespace SparseSurfelFusion {
 
+    /**
+     * \brief 带有起点的多项式，start就是该多项式定义域的左边界，即p(x) = f(x)  x∈[start, +∞).
+     */
     template<int Degree>
     class StartingPolynomial
     {
     public:
-        Polynomial<Degree> p;
-        float start;
+        Polynomial<Degree> p;   // 多项式
+        float start;            // 多项式的起点
 
         /**	    return a StartingPolynomial
           *	    new start is the bigger start
           *	    polynomials are multiplied  */
+        /**
+         * \brief 多项式乘法，其多项式为两个多项式的乘积，起始点为两个起始点中较大的一个.
+         * 
+         * \param p 多项式
+         * \return 相乘后的结果
+         */
         template<int Degree2>
         __host__ __device__ StartingPolynomial<Degree + Degree2>  operator * (const StartingPolynomial<Degree2>& p) const {
             StartingPolynomial<Degree + Degree2> sp;
@@ -30,14 +39,25 @@ namespace SparseSurfelFusion {
             return sp;
         }
 
+        /**
+         * \brief 重载定义了赋值操作，使得可以将一个 StartingPolynomial 对象的值赋给另一个对象.
+         * 
+         * \param sp 赋值者
+         * \return 被赋值对象
+         */
         __host__ __device__ StartingPolynomial& operator = (const StartingPolynomial& sp) {
             start = sp.start;
             for (int i = 0; i <= Degree; ++i)
                 p.coefficients[i] = sp.p.coefficients[i];
             return *this;
         }
-        /**     start = start * s
-          *     polynomial is scaled by s   */
+
+        /**
+         * \brief 起始点和多项式都按比例 s 缩放.
+         * 
+         * \param s 缩放比例
+         * \return 缩放后的多项式
+         */
         __host__ __device__ StartingPolynomial scale(const float& s) const {
             StartingPolynomial q;
             q.start = start * s;
@@ -45,8 +65,12 @@ namespace SparseSurfelFusion {
             return q;
         }
 
-        /**     start = start + t
-          *     polynomial f(x) -> f(x-t)   */
+        /**
+         * \brief 起点平移【start = start + t】，多项式也平移【f(x) -> f(x-t)】.
+         * 
+         * \param t 平移量
+         * \return 平移后的多项式
+         */
         __host__ __device__ StartingPolynomial shift(const float& t) const {
             StartingPolynomial q;
             q.start = start + t;
@@ -54,7 +78,12 @@ namespace SparseSurfelFusion {
             return q;
         }
 
-        /**     big start is bigger */
+        /**
+         * \brief 比较哪个多项式的起点更小，如果当前对象的起始点小于 sp 的起始点，则返回 1，否则返回 0.
+         * 
+         * \param sp 比较对象
+         * \return 是否更小
+         */
         __host__ __device__ int operator < (const StartingPolynomial& sp) const {
             if (start < sp.start) {
                 return 1;
@@ -67,6 +96,13 @@ namespace SparseSurfelFusion {
         /**     v1 > v2 , return 1
           *     v1 < v2 , return -1
           *     v1 = v2 , return 0  */
+        /**
+         * \brief 比较多项式的起点大小：v1 > v2 , return 1；v1 < v2 , return -1；v1 = v2 , return 0.
+         * 
+         * \param v1 多项式v1
+         * \param v2 多项式v2
+         * \return 多项式比较的结果
+         */
         __host__ __device__ static int Compare(const void* v1, const void* v2) {
             float d = ((StartingPolynomial*)(v1))->start - ((StartingPolynomial*)(v2))->start;
             if (d < 0) { return -1; }
@@ -75,16 +111,24 @@ namespace SparseSurfelFusion {
         }
     };
 
+    /**
+     * \brief 多项式集合(构成B样条函数的基函数集合).
+     */
     template<int Degree>
 	class PPolynomial
 	{
 	public:
-        size_t polyCount = 0;
-        StartingPolynomial<Degree>* polys = NULL;
+        size_t polyCount = 0;                       // 多项式集合元素的数量
+        StartingPolynomial<Degree>* polys = NULL;   // 带起点(有定义域的)的多项式(组)
 
         PPolynomial(void) = default;
+        /**
+         * \brief 将多项式p拷贝赋值给当前对象.
+         * 
+         * \param 多项式p 
+         */
         PPolynomial(const PPolynomial<Degree>& p) {
-            set(p.polyCount);
+            set(p.polyCount);   // 分配缓存
             memcpy(polys, p.polys, sizeof(StartingPolynomial<Degree>) * p.polyCount);
         }
         ~PPolynomial(void) {
@@ -93,13 +137,20 @@ namespace SparseSurfelFusion {
             polys = NULL;
         }
 
-
-        /**     return size of polys    */
+        /**
+         * \brief 获得当前多项式集合的byte大小.
+         * 
+         * \return 返回当前多项式集合的byte大小
+         */
         int size(void) const {
             return int(sizeof(StartingPolynomial<Degree>) * polyCount);
         }
 
-        /**     polyCount = size, polys is allocated    */
+        /**
+         * \param 释放之前的多项式，并重新分配当前多项式的内存.
+         * 
+         * \param size 多项式的项数
+         */
         void set(const size_t& size) {
             if (polyCount) {
                 free(polys);
@@ -113,11 +164,18 @@ namespace SparseSurfelFusion {
             }
         }
 
-        /**     Note: this method will sort the elements in sps
-          *     polys with the same start will be added together    */
+
+        /**
+         * \brief 对输入的 StartingPolynomial 对象数组进行升序排序，并将具有相同起点的多项式合并在一起.
+         * 
+         * \param sps 起点多项式
+         * \param count 多项式数量
+         */
         void set(StartingPolynomial<Degree>* sps, const int& count) {
-            int i, c = 0;
+            int i = 0;  // 起点多项式数组的index
+            int c = 0;  // 记录不同起点的多项式的偏移
             set(count);
+            // 根据StartingPolynomial<Degree>::Compare的方式进行排序：即根据start的大小
             qsort(sps, count, sizeof(StartingPolynomial<Degree>), StartingPolynomial<Degree>::Compare);
             for (i = 0; i < count; i++) {
                 if (!c || sps[i].start != polys[c - 1].start) {
@@ -130,8 +188,11 @@ namespace SparseSurfelFusion {
             reset(c);
         }
 
-        /**     realloc the memory to expand the polys pointer memory
-          *     the old content will be remained    */
+        /**
+         * \brief 重新分配扩展多项式的内存大小，其中旧多项式的数据会被保留.
+         * 
+         * \param newSize 新多项式的大小
+         */
         void reset(const size_t& newSize) {
             polyCount = newSize;
             polys = (StartingPolynomial<Degree>*)realloc(polys, sizeof(StartingPolynomial<Degree>) * newSize);
@@ -141,9 +202,15 @@ namespace SparseSurfelFusion {
         /**     assume that StartPolynomial is sorted by set() function
           *     calculate f0(t) + f1(t) + f2(t) + ... + fn(t)
           *     StartPolynomial n+1's start >= t    */
+        /**
+         * \brief 【假设起始多项式集合被set函数排序】获得多项式集合中满足start < t的多项式，这些多项式在t点处的数值和(f0(t) + f1(t) + f2(t) + ... + fn(t)).
+         * 
+         * \param t 自变量t，阈值t
+         * \return 返回多项式集合中满足start < t的多项式的和
+         */
         float operator()(const float& t) const {
             float v = 0;
-            for (int i = 0; i<int(polyCount) && t>polys[i].start; i++) { v += polys[i].p(t); }
+            for (int i = 0; i < int(polyCount) && t > polys[i].start; i++)  { v += polys[i].p(t); }
             return v;
         }
 
@@ -153,26 +220,38 @@ namespace SparseSurfelFusion {
           *     p[0].start / end [f0(x)dx] + p[1].start / end [f1(x)dx] + ... + p[n].start / end [fn(x)dx]
           *     p[n+1].start >= min(tMin, tMax)
           *     tMin can be bigger than tMax    */
+
+        /**
+         * \brief 这个 integral 函数用于计算在给定区间 [tMin,tMax] 内的多个 StartingPolynomial 对象的定积分的总和。
+         * 
+         * \param tMin 积分区间的起点
+         * \param tMax 积分区间的终点
+         * \return 积分的结果
+         */
         float integral(const float& tMin, const float& tMax) const {
-            int m = 1;
+            int m = 1;  // 定积分符号
             float start, end, s, v = 0;
             start = tMin;
             end = tMax;
-            if (tMin > tMax) {
+            if (tMin > tMax) {  // 定积分上下界确定符号
                 m = -1;
                 start = tMax;
                 end = tMin;
             }
-            for (int i = 0; i<int(polyCount) && polys[i].start < end; i++) {
-                if (start < polys[i].start) { s = polys[i].start; }
+            for (int i = 0; i < int(polyCount) && polys[i].start < end; i++) {
+                if (start < polys[i].start) { s = polys[i].start; } // 还未到达下界，将多项式的起点赋值给s
                 else { s = start; }
-                v += polys[i].p.integral(s, end);
+                v += polys[i].p.integral(s, end);   // 在定义域范围内的积分
             }
             return v * m;
         }
 
 
-        /**     integral(polys[0].start,polys[polyCount-1].start)   */
+        /**
+         * \brief 这里应该是计算函数集合中所有元素非公共区间的积分【前提是函数已经排序】.
+         * 
+         * \return 函数集合中所有元素非公共区间的积分【前提是函数已经排序】
+         */
         float Integral(void) const {
             return integral(polys[0].start, polys[polyCount - 1].start);
         }
@@ -397,40 +476,77 @@ namespace SparseSurfelFusion {
             printf("\n");
         }
 
+        /**
+         * \brief 获得2个初始多项式【常函数】，多项式f0 = 1 x∈[-radius, +∞)，多项式f1 = -1 x∈[radius, +∞)
+         * 
+         * \param radius 区间半径
+         * \return 初始多项式
+         */
         static PPolynomial ConstantFunction(const float& radius = 0.5) {
             if (Degree < 0) {
                 fprintf(stderr, "不能将阶数为 %d 的多项式设置为常数\n", Degree);
                 exit(0);
             }
             PPolynomial q;
-            q.set(2);
+            q.set(2);   // 开辟空间
 
-            q.polys[0].start = -radius;
-            q.polys[1].start = radius;
+            q.polys[0].start = -radius;             // 多项式0起始坐标在-radius
+            q.polys[1].start = radius;              // 多项式1起始坐标在radius
 
-            q.polys[0].p.coefficients[0] = 1.0;
-            q.polys[1].p.coefficients[0] = -1.0;
+            q.polys[0].p.coefficients[0] = 1.0;     // 多项式0常数为1
+            q.polys[1].p.coefficients[0] = -1.0;    // 多项式1常数为-1
             return q;
         }
 
-        /**     use to generate approximation to Gaussian filter    */
+        /**
+         * \brief 生成高斯平滑的近似.
+         * 
+         * \param width 平滑的半径
+         * \return 平滑的多项式
+         */
         static PPolynomial GaussianApproximation(const float& width = 0.5);
 
+        /**
+         * \brief 用于计算多项式的移动平均值。它的作用是对给定半径范围内的多项式进行积分和平均，从而平滑原始多项式数据.
+         * 
+         * \param radius 平滑的半径
+         * \return 平滑的多项式
+         */
         PPolynomial<Degree + 1> MovingAverage(const float& radius) {
-            PPolynomial<Degree + 1> A;
-            Polynomial<Degree + 1> p;
-            StartingPolynomial<Degree + 1>* sps;
+            PPolynomial<Degree + 1> A;              // 多项式集合对象(二次B样条函数)
+            Polynomial<Degree + 1> p;               // 多项式对象
+            StartingPolynomial<Degree + 1>* sps;    // 带有起始位置的多项式，主要是记录多项式函数在区间段的平移，从而求出[-radius, radius]的积分
             sps = (StartingPolynomial<Degree + 1>*)malloc(sizeof(StartingPolynomial<Degree + 1>) * polyCount * 2);
-            for (int i = 0; i<int(polyCount); i++) {
-                sps[2 * i].start = polys[i].start - radius;
-                sps[2 * i + 1].start = polys[i].start + radius;
+            for (int i = 0; i < int(polyCount); i++)  {
+                sps[2 * i].start = polys[i].start - radius;       // 多项式定义域起点(左边界)偏移
+                sps[2 * i + 1].start = polys[i].start + radius;   // 多项式定义域起点(左边界)偏移
+                // p = 多项式i的原函数 - 多项式i的原函数在start处的值   -->   确保多项式原函数在start处的值为0
                 p = polys[i].p.integral() - polys[i].p.integral()(polys[i].start);
-                sps[2 * i].p = p.shift(-radius);
-                sps[2 * i + 1].p = p.shift(radius) * -1;
+                sps[2 * i].p = p.shift(-radius);                  // 多项式偏移得到新的多项式
+                sps[2 * i + 1].p = p.shift(radius) * -1;          // 多项式偏移得到新的多项式
+                //if (int(Degree) == 0) {
+                //    printf("Degree = %d  Poly[%d] = %.3fx + %.3f\n", int(Degree), i, p.coefficients[1], p.coefficients[0]);
+                //    printf("            sps [%d] = %.3fx + %.3f  x ∈ [%.3f, ∞)\n            sps [%d] = %.3fx + %.3f  x ∈ [%.3f, ∞)\n",
+                //        2 * i, sps[2 * i].p.coefficients[1], sps[2 * i].p.coefficients[0], sps[2 * i].start,
+                //        2 * i + 1, sps[2 * i + 1].p.coefficients[1], sps[2 * i + 1].p.coefficients[0], sps[2 * i + 1].start);
+                //}
+                //if (int(Degree) == 1) {
+                //    printf("Degree = %d  Poly[%d] = %.3fx^2 + %.3fx + %.3f\n", int(Degree), i, p.coefficients[2], p.coefficients[1], p.coefficients[0]);
+                //    printf("            sps [%d] = %.3fx^2 + %.3fx + %.3f  x ∈ [%.3f, ∞)\n            sps [%d] = %.3fx^2 + %.3fx + %.3f  x ∈ [%.3f, ∞)\n",
+                //        2 * i, sps[2 * i].p.coefficients[2], sps[2 * i].p.coefficients[1], sps[2 * i].p.coefficients[0], sps[2 * i].start,
+                //        2 * i + 1, sps[2 * i + 1].p.coefficients[2], sps[2 * i + 1].p.coefficients[1], sps[2 * i + 1].p.coefficients[0], sps[2 * i + 1].start);
+                //}
+                //else if (int(Degree) == 2) {
+                //    printf("Degree = %d  Poly[%d] = %.3fx^3 + %.3fx^2 + %.3fx + %.3f\n", int(Degree), i, p.coefficients[3], p.coefficients[2], p.coefficients[1], p.coefficients[0]);
+                //    printf("            sps [%d] = %.3fx^3 + %.3fx^2 + %.3fx + %.3f  x ∈ [%.3f, ∞)\n            sps [%d] = %.3fx^3 + %.3fx^2 + %.3fx + %.3f  x ∈ [%.3f, ∞)\n",
+                //        2 * i, sps[2 * i].p.coefficients[3], sps[2 * i].p.coefficients[2], sps[2 * i].p.coefficients[1], sps[2 * i].p.coefficients[0], sps[2 * i].start,
+                //        2 * i + 1, sps[2 * i + 1].p.coefficients[3], sps[2 * i + 1].p.coefficients[2], sps[2 * i + 1].p.coefficients[1], sps[2 * i + 1].p.coefficients[0], sps[2 * i + 1].start);
+                //}
             }
-            A.set(sps, int(polyCount * 2));
+            A.set(sps, int(polyCount * 2)); // 合并偏移的多项式
             free(sps);
-            return A * 1.0 / (2 * radius);
+
+            return A * 1.0 / (2 * radius);  // 多项式在[-radius, radius]区间内求平均面积，本身求的也是多项式在区间内的平均值
         }
 
         void write(FILE* fp, const int& samples, const float& min, const float& max) const {
@@ -442,16 +558,27 @@ namespace SparseSurfelFusion {
             }
         }
 	};
-    // 通用版本的 GaussianApproximation 函数实现
+
+    /**
+     * \brief 【通用版本的 GaussianApproximation 函数实现】用在某个区间上的平均值近似的作为高斯分布.
+     * 
+     * \param radius 区间的宽度/2
+     * \return (近似)高斯平滑后的多项式
+     */
     template<int Degree>
-    PPolynomial<Degree> PPolynomial<Degree>::GaussianApproximation(const float& width) {
-        return PPolynomial<Degree - 1>::GaussianApproximation().MovingAverage(width);
+    PPolynomial<Degree> PPolynomial<Degree>::GaussianApproximation(const float& radius) {
+        return PPolynomial<Degree - 1>::GaussianApproximation().MovingAverage(radius);
     }
 
-    // 特化版本的 GaussianApproximation 函数实现
+    /**
+     * \brief 【特化版本的 GaussianApproximation 函数实现】迭代的最后一层，初始多项式【常数多项式】.
+     * 
+     * \param radius 区间的宽度/2
+     * \return 初始多项式【常数多项式】
+     */
     template<>
-    inline PPolynomial<0> PPolynomial<0>::GaussianApproximation(const float& width) {
-        return ConstantFunction(width);
+    inline PPolynomial<0> PPolynomial<0>::GaussianApproximation(const float& radius) {
+        return ConstantFunction(radius);
     }
 
 

@@ -161,8 +161,6 @@ __global__ void SparseSurfelFusion::device::adjustPointsCoordinateAndNormalKerne
 	for (int i = 0; i < DIMENSION; i++) {
 		points[idx].normal.coords[i] *= len;
 	}
-	//if (idx < 1000)	printf("index = %u, point = (%.5f, %.5f, %.5f), normal  = (%.5f, %.5f, %.5f)\n", idx, points[idx].point.coords[0], points[idx].point.coords[1], points[idx].point.coords[2], points[idx].normal.coords[0], points[idx].normal.coords[1], points[idx].normal.coords[2]);
-
 }
 
 __global__ void SparseSurfelFusion::device::generateCodeKernel(OrientedPoint3D<float>* pos, long long* keys, const unsigned int pointsNum)
@@ -351,6 +349,9 @@ __global__ void SparseSurfelFusion::device::generateUniqueNodeArrayPreviousLevel
 		atomicAdd(&uniqueNodeArrayPreviousLevel[fatherIdx].dnum, NodeArrayD[idx].dnum);			// 上一层父节点的dnum是包含下面所有子节点的数量，包括有效点和无效点
 		atomicMin(&uniqueNodeArrayPreviousLevel[fatherIdx].didx, NodeArrayD[idx].didx);			// 上一层父节点中didx是子节点中，在NodeArrayD中最靠前的那一个节点的idx，包括有效和无效
 		uniqueNodeArrayPreviousLevel[fatherIdx].children[sonKey] = idx;							// 在有效点的时候设置其有效的孩子节点，就是当前层的有效值才能是上一层父亲的儿子，无效点不能作为儿子
+		//if (fatherIdx == 0) {
+		//	printf("sonKey = %d   idx = %d\n", sonKey, idx);
+		//}
 	}
 }
 
@@ -402,7 +403,9 @@ __global__ void SparseSurfelFusion::device::updateNodeArrayParentAndChildrenKern
 		NodeArray[idx].parent = -1;										// 如果是第0层节点
 #pragma unroll	// 展开循环，加速运算
 		for (int child = 0; child < 8; child++) {						// 计算Children在NodeArray的位置
+			//printf("第 0 层 Child[%d] = %d\n", child, NodeArray[idx].children[child]);
 			NodeArray[idx].children[child] += BaseAddressArray_Device[depth + 1];
+			//printf("第 0 层 Child[%d] = %d   BaseAddressArray = %d\n", child, NodeArray[idx].children[child], BaseAddressArray_Device[depth + 1]);
 		}
 	}
 	else {
@@ -491,10 +494,16 @@ __global__ void SparseSurfelFusion::device::computeNodeNeighborKernel(const unsi
 	const unsigned int offset = idx + left;	// 当前层的节点在NodeArray中的位置
 	for (int i = 0; i < 27; i++) {
 		int sonKey = (NodeArray[offset].key >> (3 * (device::maxDepth - depth))) & 7;
-		int parentIdx = NodeArray[offset].parent;
-		int neighParent = NodeArray[parentIdx].neighs[device::LUTparent[sonKey][i]];
+		//if (depth == 1) {
+		//	if (idx == 7)	printf("idx = %d   offset = %d   neighborIdx = %d   sonKey = %d\n", idx, offset, i, sonKey);
+		//}
+		int parentIdx = NodeArray[offset].parent;	// 找到节点的父亲
+		int neighParent = NodeArray[parentIdx].neighs[device::LUTparent[sonKey][i]];	// 通过查表确定父亲的邻居
 		if (neighParent != -1) {
 			NodeArray[offset].neighs[i] = NodeArray[neighParent].children[LUTchild[sonKey][i]];
+			//if (depth == 1) {
+			//	if (idx == 0 && i == 23)	printf("idx = %d   offset = %d   neighborIdx = %d   sonKey = %d   ParentIdx = %d   neighParent = %d   neighbor = %d   LUTChild = %d\n", idx, offset, i, sonKey, parentIdx, neighParent, NodeArray[offset].neighs[i], LUTchild[sonKey][i]);
+			//}
 		}
 		else {
 			NodeArray[offset].neighs[i] = -1;
@@ -621,8 +630,16 @@ void SparseSurfelFusion::BuildOctree::adjustPointsCoordinateAndNormal(DeviceBuff
 		Center.coords[i] -= MaxEdge / 2.0f;	// 调整中心点的位置
 	}
 	dim3 block(128);
-	dim3 grid(divUp(points.ArrayView().Size(), block.x));
+	dim3 grid(divUp(points.ArraySize(), block.x));
 	device::adjustPointsCoordinateAndNormalKernel << <grid, block, 0, stream >> > (points.Array().ptr(), Center, MaxEdge, points.ArrayView().Size());
+
+	//std::vector<OrientedPoint3D<float>> orientedPoint_Host(points.ArraySize());
+	//CHECKCUDA(cudaMemcpyAsync(orientedPoint_Host.data(), points.Ptr(), sizeof(OrientedPoint3D<float>) * points.ArraySize(), cudaMemcpyDeviceToHost, stream));
+	//CHECKCUDA(cudaStreamSynchronize(stream));
+	//for (int i = 0; i < points.ArraySize(); i++) {
+	//	if (i % 10 == 0) printf("index = %d  coor = (%.5f, %.5f, %.5f)  normal = (%.5f, %.5f, %.5f)\n", i, orientedPoint_Host[i].point.coords[0], orientedPoint_Host[i].point.coords[1], orientedPoint_Host[i].point.coords[2], orientedPoint_Host[i].normal.coords[0], orientedPoint_Host[i].normal.coords[1], orientedPoint_Host[i].normal.coords[2]);
+	//}
+
 }
 
 void SparseSurfelFusion::BuildOctree::generateCode(DeviceBufferArray<OrientedPoint3D<float>>& points, DeviceBufferArray<long long>& keys, size_t count, cudaStream_t stream)

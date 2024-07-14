@@ -17,7 +17,9 @@ namespace SparseSurfelFusion {
 
     struct ifSubdivide {
         __device__ bool operator()(const OctNode& x) {
-            return (x.children[0] == -1) && (x.hasTriangle || x.hasIntersection);
+            //return (x.children[0] == -1) && (x.hasTriangle || x.hasIntersection);
+            return (x.children[0] == -1 && x.children[1] == -1 && x.children[2] == -1 && x.children[3] == -1 && x.children[4] == -1 && x.children[5] == -1 && x.children[6] == -1 && x.children[7] == -1) && (x.hasTriangle || x.hasIntersection);
+
         }
     };
 
@@ -341,7 +343,7 @@ namespace SparseSurfelFusion {
         };
 	}
 }
-__global__ void SparseSurfelFusion::device::ComputeVertexImplicitFunctionValueKernel(DeviceArrayView<VertexNode> VertexArray, DeviceArrayView<OctNode> NodeArray, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunctions, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const unsigned int VertexArraySize, const unsigned int isoValue, float* vvalue)
+__global__ void SparseSurfelFusion::device::ComputeVertexImplicitFunctionValueKernel(DeviceArrayView<VertexNode> VertexArray, DeviceArrayView<OctNode> NodeArray, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunctions, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const unsigned int VertexArraySize, const float isoValue, float* vvalue)
 {
     const unsigned int idx = threadIdx.x + blockDim.x * blockIdx.x;
     if (idx >= VertexArraySize)	return;
@@ -1169,7 +1171,7 @@ __global__ void SparseSurfelFusion::device::wholeRebuildArray(DeviceArrayView<Oc
 
 
 
-void SparseSurfelFusion::ComputeTriangleIndices::ComputeVertexImplicitFunctionValue(DeviceArrayView<VertexNode> VertexArray, DeviceArrayView<OctNode> NodeArray, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const unsigned int isoValue, cudaStream_t stream)
+void SparseSurfelFusion::ComputeTriangleIndices::ComputeVertexImplicitFunctionValue(DeviceArrayView<VertexNode> VertexArray, DeviceArrayView<OctNode> NodeArray, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const float isoValue, cudaStream_t stream)
 {
     const unsigned int VertexArraySize = VertexArray.Size();
     dim3 block(128);
@@ -1262,8 +1264,10 @@ void SparseSurfelFusion::ComputeTriangleIndices::generateSubdivideNodeArrayCount
     CHECKCUDA(cudaStreamSynchronize(stream));
 
     for (int i = 0; i <= Constants::maxDepth_Host; i++) {
+        printf("第 %d 层细分节点数量：%d   ", i, SubdivideDepthCount[i]);
         if (i == 0) SubdivideDepthAddress[i] = 0;
         else SubdivideDepthAddress[i] = SubdivideDepthAddress[i - 1] + SubdivideDepthCount[i - 1];
+        printf("节点偏移：%d\n", SubdivideDepthAddress[i]);
     }
 
 }
@@ -1404,7 +1408,7 @@ void SparseSurfelFusion::ComputeTriangleIndices::generateVerticesAndTriangle(Dev
 }
 
 
-void SparseSurfelFusion::ComputeTriangleIndices::CoarserSubdivideNodeAndRebuildMesh(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const unsigned int isoValue, CoredVectorMeshData& mesh, cudaStream_t stream)
+void SparseSurfelFusion::ComputeTriangleIndices::CoarserSubdivideNodeAndRebuildMesh(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const float isoValue, CoredVectorMeshData& mesh, cudaStream_t stream)
 {
     int minSubdivideRootDepth;
     SubdivideDepthBuffer.SynchronizeToHost(stream);
@@ -1713,7 +1717,7 @@ void SparseSurfelFusion::ComputeTriangleIndices::CoarserSubdivideNodeAndRebuildM
     CHECKCUDA(cudaFreeAsync(SubdivideArrayDepthBuffer, stream));
 }
 
-void SparseSurfelFusion::ComputeTriangleIndices::FinerSubdivideNodeAndRebuildMesh(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const unsigned int isoValue, CoredVectorMeshData& mesh, cudaStream_t stream)
+void SparseSurfelFusion::ComputeTriangleIndices::FinerSubdivideNodeAndRebuildMesh(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const float isoValue, CoredVectorMeshData& mesh, cudaStream_t stream)
 {
     const unsigned int NodeArraySize = NodeArray.ArraySize();
     for (int i = finerDepth; i < Constants::maxDepth_Host; i++) {

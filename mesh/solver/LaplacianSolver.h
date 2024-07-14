@@ -34,7 +34,7 @@ namespace SparseSurfelFusion {
 		 * \param colIndex 记录一个节点及其邻居有效的colIndex(有效 <==> fabs(LaplacianEntryValue) > device::eps)
 		 * \param val 记录一个节点及其邻居有效的LaplacianEntryValue的值
 		 */
-		__global__ void GenerateSingleNodeLaplacian(DeviceArrayView<double> dot_F_F, DeviceArrayView<double> dot_F_D2F, DeviceArrayView<int> encodeNodeIndexInFunction, DeviceArrayView<OctNode> NodeArray, const unsigned int begin, const unsigned int calculatedNodeNum, int* rowCount, int* colIndex, float* val);
+		__global__ void GenerateSingleNodeLaplacian(const unsigned int depth, DeviceArrayView<double> dot_F_F, DeviceArrayView<double> dot_F_D2F, DeviceArrayView<int> encodeNodeIndexInFunction, DeviceArrayView<OctNode> NodeArray, const unsigned int begin, const unsigned int calculatedNodeNum, int* rowCount, int* colIndex, float* val);
 	
 		/**
 		 * \brief 计算获得Laplace矩阵的元素.

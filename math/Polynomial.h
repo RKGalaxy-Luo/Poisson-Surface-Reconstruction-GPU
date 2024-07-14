@@ -6,6 +6,9 @@
 
 namespace SparseSurfelFusion {
 
+    /**
+     * \brief 纯多项式，没有范围.
+     */
 	template<int Degree>
 	class Polynomial
 	{
@@ -60,8 +63,8 @@ namespace SparseSurfelFusion {
             t2 = tMax;
             for (int i = 0; i <= Degree; i++) {
                 v += coefficients[i] * (t2 - t1) / (i + 1);
-                if (t1 != -DBL_MAX && t1 != DBL_MAX) { t1 *= tMin; }
-                if (t2 != -DBL_MAX && t2 != DBL_MAX) { t2 *= tMax; }
+                if (t1 != -DBL_MAX && t1 != DBL_MAX) { t1 *= tMin; }    // 幂 + 1
+                if (t2 != -DBL_MAX && t2 != DBL_MAX) { t2 *= tMax; }    // 幂 + 1
             }
             return v;
         }
@@ -361,7 +364,7 @@ namespace SparseSurfelFusion {
          */
         Polynomial<Degree + 1> integral(void) const {
             Polynomial<Degree + 1> p;
-            p.coefficients[0] = 0;
+            p.coefficients[0] = 0;  // 常数项为0
             for (int i = 0; i <= Degree; i++) {
                 p.coefficients[i + 1] = coefficients[i] / (i + 1);
             }

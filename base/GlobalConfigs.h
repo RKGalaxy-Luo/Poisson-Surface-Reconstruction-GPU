@@ -49,8 +49,8 @@
 
 #define EPSILON float(1e-6)
 
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 600
+#define WINDOW_WIDTH 1728
+#define WINDOW_HEIGHT 972
 
 #define SHADER_PATH_PREFIX "E:/PoissonReconstructionGPU/PoissonSurfaceReconstructionGPU/Poisson-Surface-Reconstruction-GPU/render/shaders/"
 

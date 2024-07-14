@@ -22,8 +22,11 @@
 namespace SparseSurfelFusion {
 	namespace device {
 
-		__device__ float FCenterWidthPoint(int idx, const ConfirmedPPolynomial<CONVTIMES, CONVTIMES + 2>& BaseFunctionMaxDepth_d, const Point3D<float>& center, const float& width, const Point3D<float>& point);
+		__device__ float FCenterWidthPoint(int idx, int i, int j, const ConfirmedPPolynomial<CONVTIMES, CONVTIMES + 2>& BaseFunctionMaxDepth_d, const Point3D<float>& center, const float& width, const Point3D<float>& point);
 
+		/**
+		 * \brief 对前面对节点进行x,y,z分段编码的内容进行解码.
+		 */
 		__device__ void getFunctionIdxNode(const int& key, const int& maxDepth, int* idx);
 
 		__global__ void CalculateVectorFieldKernel(ConfirmedPPolynomial<CONVTIMES, CONVTIMES + 2>* BaseFunctionMaxDepth_Device, DeviceArrayView<OrientedPoint3D<float>> DenseOrientedPoints, DeviceArrayView<OctNode> NodeArray, const unsigned int DLevelOffset, const unsigned int DLevelNodeNum, Point3D<float>* VectorField);
