@@ -26,5 +26,9 @@ namespace SparseSurfelFusion {
         static const int markOffset_Host = 31;
 
         static const int maxDepth_Host = MAX_DEPTH_OCTREE;
+
+        static const int maxSurfelsNum = MAX_SURFEL_COUNT;
+
+        static const int maxMeshTrianglesNum = MAX_MESH_TRIANGLE_COUNT;
     };
 }

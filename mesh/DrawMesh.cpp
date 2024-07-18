@@ -14,6 +14,10 @@ void framebufferSizeCallback(GLFWwindow* window, int width, int height)
 
 SparseSurfelFusion::DrawMesh::DrawMesh()
 {
+	VerticesAverageNormals.AllocateBuffer(MAX_SURFEL_COUNT);
+	MeshVertices.AllocateBuffer(MAX_SURFEL_COUNT);
+	MeshTriangleIndices.AllocateBuffer(MAX_MESH_TRIANGLE_COUNT);
+
 	int glfwSate = glfwInit();
 	if (glfwSate == GLFW_FALSE)
 	{
@@ -64,116 +68,29 @@ SparseSurfelFusion::DrawMesh::DrawMesh()
 
 	meshShader.Compile(vertexShaderPath, fragmentShaderPath);
 	initialCoordinateSystem();
+	registerCudaResources();
 }
 
-void SparseSurfelFusion::DrawMesh::DrawRenderedMesh(CoredVectorMeshData& mesh)
+SparseSurfelFusion::DrawMesh::~DrawMesh()
 {
-	const int TranglesCount = mesh.triangleCount();		// 传入实时顶点的数量
-	const int verticesNum = mesh.InCorePointsCount();	// 传入点的数量
-	//printf("MeshCount = %d\n", TranglesCount);
-	std::vector<GLfloat> vertices;
-	std::vector<GLfloat> normals;
-	std::vector<GLuint> elementIndex;
-
-	if (!(mesh.GetVertexArray(vertices) && mesh.GetTriangleIndices(elementIndex))) {
-		LOGGING(FATAL) << "渲染数据为空";
-	}
-
-	normals.resize(verticesNum * 3);
-	memcpy(normals.data(), VerticesNormals.data(), sizeof(float) * verticesNum * 3);
-
-	GLuint* elemIdxPtr = elementIndex.data();
-	GLfloat* verticesPtr = vertices.data();
-	GLfloat* normalsPtr = normals.data();
-	glGenVertexArrays(1, &GeometryVAO);		// 生成VAO
-	glGenBuffers(1, &GeometryVBO);			// 生成VBO
-	glGenBuffers(1, &GeometryIBO);			// 创建1个IBO，并将标识符存储在IBO变量中
-
-	glBindVertexArray(GeometryVAO);						// 绑定VAO
-	glBindBuffer(GL_ARRAY_BUFFER, GeometryVBO);			// 绑定VBO
-	GLsizei bufferSize = sizeof(GLfloat) * verticesNum * 6;				// x,y,z,nx,ny,nz = 6个GLfloat
-
-	glBufferData(GL_ARRAY_BUFFER, bufferSize, NULL, GL_DYNAMIC_DRAW);	// 动态绘制，目前只是先开辟个大小
-	// 参数1：指定要更新的缓冲区对象的目标
-	// 参数2：指定要更新的数据在缓冲区中的偏移量（以字节为单位）。偏移量表示从缓冲区的起始位置开始的偏移量。
-	// 参数3：指定要更新的数据的大小（以字节为单位）
-	// 参数4：指向包含要更新的数据的指针
-	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(GLfloat) * verticesNum * 3, verticesPtr);								// 分批加载属性数组
-	glBufferSubData(GL_ARRAY_BUFFER, sizeof(GLfloat) * verticesNum * 3, sizeof(GLfloat) * verticesNum * 3, normalsPtr);	// 分批加载属性数组
-
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, GeometryIBO);														// 将EBO绑定到GL_ELEMENT_ARRAY_BUFFER目标
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * TranglesCount * 3, elemIdxPtr, GL_DYNAMIC_DRAW);	// 将索引数据从CPU传输到GPU，绘制顶点还需要索引数组？
-	// 位置
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)(0 * sizeof(GLfloat) * verticesNum));	// 设置VAO解释器
-	glEnableVertexAttribArray(0);	// layout (location = 0)
-	// 法线
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat) * verticesNum));	// 设置VAO解释器
-	glEnableVertexAttribArray(1);	// layout (location = 1)
-
-	glBindBuffer(GL_ARRAY_BUFFER, 0);			// 解绑VBO
-	glBindVertexArray(0);						// 解绑VAO
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);	// 解绑IBO
-	// 在双缓冲渲染中，通常会使用两个 VAO，交替地进行渲染和更新【GLFW自带双缓存渲染】
-
-	// 调用了glClearColor来设置清空屏幕所用的颜色
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f); //RGBA
-	// 通过调用glClear函数来清空屏幕的颜色缓冲，它接受一个缓冲位(Buffer Bit)来指定要清空的缓冲，可能的缓冲位有GL_COLOR_BUFFER_BIT
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);// 现在同时清除深度缓冲区!(不清除深度画不出来立体图像)
-
-	// 激活着色器
-	meshShader.BindProgram(); //renderer构造时已经编译
-
-	meshShader.SetUniformVector("objectColor", 0.7f, 0.7f, 0.7f);	// 紫色
-	meshShader.SetUniformVector("lightColor", 1.0f, 1.0f, 1.0f);
-	meshShader.SetUniformVector("lightPos", -1.2f, -1.0f, -2.0f);
-
-	// 创建变换
-	glm::mat4 view = glm::mat4(1.0f);		// 确保初始化矩阵是单位矩阵
-	glm::mat4 projection = glm::mat4(1.0f);	// 投影矩阵，选择是透视还是正射
-	glm::mat4 model = glm::mat4(1.0f);		// 计算每个对象的模型矩阵，并在绘制之前将其传递给着色器
-	//设置透视矩阵
-	projection = glm::perspective(glm::radians(30.0f), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 100.0f);
-	meshShader.setUniformMat4(std::string("projection"), projection); // 注意:目前我们每帧设置投影矩阵，但由于投影矩阵很少改变，所以最好在主循环之外设置它一次。
-	float radius = 3.0f;//摄像头绕的半径
-	float camX = static_cast<float>(sin(glfwGetTime() * 0.5f) * radius);
-	float camZ = static_cast<float>(cos(glfwGetTime() * 0.5f) * radius);
-	view = glm::lookAt(glm::vec3(camX, 3.0f, camZ), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	meshShader.setUniformMat4(std::string("view"), view);
-	meshShader.SetUniformVector("viewPos", glm::vec3(camX, 3.0f, camZ));
-	model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
-	model = glm::rotate(model, glm::radians(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));//绕Up向量(0,1,0)旋转
-	meshShader.setUniformMat4(std::string("model"), model);
-
-	glBindVertexArray(GeometryVAO); // 绑定VAO后绘制
-
-	glDrawElements(GL_TRIANGLES, TranglesCount * 3, GL_UNSIGNED_INT, 0);
-
-	// 清除绑定
-	glBindVertexArray(0);
-	meshShader.UnbindProgram();
-
-	// 绘制坐标系
-	coordinateShader.BindProgram();	// 绑定坐标轴的shader
-	coordinateShader.setUniformMat4(std::string("projection"), projection);
-	coordinateShader.setUniformMat4(std::string("view"), view);
-	coordinateShader.setUniformMat4(std::string("model"), model);
-	glBindVertexArray(coordinateSystemVAO); // 绑定VAO后绘制
-
-	glLineWidth(3.0f);
-	glDrawArrays(GL_LINES, 0, 34);	// box有54个元素，绘制线段
-
-	// 清除绑定
-	glBindVertexArray(0);
-	coordinateShader.UnbindProgram();
-
-	// 函数会交换颜色缓冲（它是一个储存着GLFW窗口每一个像素颜色值的大缓冲），它在这一迭代中被用来绘制，并且将会作为输出显示在屏幕上
-	glfwSwapBuffers(window);
-	glfwPollEvents();
-
-	// 释放资源
+	VerticesAverageNormals.ReleaseBuffer();
+	MeshVertices.ReleaseBuffer();
+	MeshTriangleIndices.ReleaseBuffer();
 	glDeleteVertexArrays(1, &GeometryVAO);
 	glDeleteBuffers(1, &GeometryVBO);
 	glDeleteBuffers(1, &GeometryIBO);
+}
+
+void SparseSurfelFusion::DrawMesh::DrawRenderedMesh(cudaStream_t stream)
+{
+	glfwMakeContextCurrent(window);
+
+	mapToCuda(MeshVertices.ArrayView(), MeshTriangleIndices.ArrayView(), stream);
+	clearWindow();
+	drawMesh(view, projection, model);
+	drawCoordinateSystem(view, projection, model);
+	swapBufferAndCatchEvent();
+	unmapFromCuda(stream);
 }
 
 
@@ -210,6 +127,130 @@ void SparseSurfelFusion::DrawMesh::initialCoordinateSystem()
 
 	glBindBuffer(GL_ARRAY_BUFFER, 0);			// 解绑VBO
 	glBindVertexArray(0);						// 解绑VAO
+}
+
+void SparseSurfelFusion::DrawMesh::registerCudaResources()
+{
+	glfwMakeContextCurrent(window);
+
+	glGenVertexArrays(1, &GeometryVAO);	// 生成VAO
+	glBindVertexArray(GeometryVAO);		// 绑定VAO
+
+	glGenBuffers(1, &GeometryVBO);		// 生成VBO
+	glGenBuffers(1, &GeometryIBO);		// 创建1个IBO，并将标识符存储在IBO变量中
+
+	glBindBuffer(GL_ARRAY_BUFFER, GeometryVBO);	// 绑定VBO
+
+	// x,y,z,nx,ny,nz = 6个GLfloat
+	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * Constants::maxSurfelsNum * 6, NULL, GL_DYNAMIC_DRAW);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(GLfloat) * Constants::maxSurfelsNum * 3, NULL);												// 分批加载属性数组
+	glBufferSubData(GL_ARRAY_BUFFER, sizeof(GLfloat) * Constants::maxSurfelsNum * 3, sizeof(GLfloat) * Constants::maxSurfelsNum * 3, NULL);	// 分批加载属性数组
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, GeometryIBO);																	// 将EBO绑定到GL_ELEMENT_ARRAY_BUFFER目标
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * Constants::maxMeshTrianglesNum * 3, NULL, GL_DYNAMIC_DRAW);	// 将索引数据从CPU传输到GPU，绘制顶点还需要索引数组
+
+	// 位置
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)(0 * sizeof(GLfloat) * Constants::maxSurfelsNum));	// 设置VAO解释器
+	glEnableVertexAttribArray(0);	// layout (location = 0)
+	// 法线
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat) * Constants::maxSurfelsNum));	// 设置VAO解释器
+	glEnableVertexAttribArray(1);	// layout (location = 1)
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);			// 解绑VBO
+	glBindVertexArray(0);						// 解绑VAO
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);	// 解绑IBO
+	CHECKCUDA(cudaGraphicsGLRegisterBuffer(&cudaVBOResources, GeometryVBO, cudaGraphicsRegisterFlagsNone));
+	CHECKCUDA(cudaGraphicsGLRegisterBuffer(&cudaIBOResources, GeometryIBO, cudaGraphicsRegisterFlagsNone));
+}
+
+void SparseSurfelFusion::DrawMesh::mapToCuda(DeviceArrayView<Point3D<float>> MeshVertices, DeviceArrayView<TriangleIndex> MeshTriangleIndices, cudaStream_t stream)
+{
+	CHECKCUDA(cudaGraphicsMapResources(1, &cudaVBOResources, stream));	//首先映射资源
+	CHECKCUDA(cudaGraphicsMapResources(1, &cudaIBOResources, stream));	//首先映射资源
+
+	// 获得buffer
+	Point3D<float>* ptr = NULL;			// 用于获取cuda资源的地址(重复使用)
+	size_t bufferSize = 0;				// 用于获取cuda资源buffer的大小
+	// 获得OpenGL上的资源指针
+	CHECKCUDA(cudaGraphicsResourceGetMappedPointer(reinterpret_cast<void**>(&ptr), &bufferSize, cudaVBOResources));
+	CHECKCUDA(cudaMemcpyAsync(ptr, MeshVertices.RawPtr(), sizeof(Point3D<float>) * VerticesCount, cudaMemcpyDeviceToDevice, stream));
+	CHECKCUDA(cudaMemcpyAsync(ptr + Constants::maxSurfelsNum, VerticesAverageNormals.Ptr(), sizeof(Point3D<float>) * VerticesCount, cudaMemcpyDeviceToDevice, stream));
+
+	unsigned int* idxPtr = NULL;
+	size_t idxBufferSize = 0;
+	CHECKCUDA(cudaGraphicsResourceGetMappedPointer(reinterpret_cast<void**>(&idxPtr), &idxBufferSize, cudaIBOResources));
+	CHECKCUDA(cudaMemcpyAsync(idxPtr, MeshTriangleIndices.RawPtr(), sizeof(TriangleIndex) * TranglesCount, cudaMemcpyDeviceToDevice, stream));
+	CHECKCUDA(cudaStreamSynchronize(stream));
+}
+
+void SparseSurfelFusion::DrawMesh::unmapFromCuda(cudaStream_t stream)
+{
+	CHECKCUDA(cudaGraphicsUnmapResources(1, &cudaVBOResources, stream));
+	CHECKCUDA(cudaGraphicsUnmapResources(1, &cudaIBOResources, stream));
+}
+
+void SparseSurfelFusion::DrawMesh::clearWindow()
+{
+	// 调用了glClearColor来设置清空屏幕所用的颜色
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f); //RGBA
+	// 通过调用glClear函数来清空屏幕的颜色缓冲，它接受一个缓冲位(Buffer Bit)来指定要清空的缓冲，可能的缓冲位有GL_COLOR_BUFFER_BIT
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);// 现在同时清除深度缓冲区!(不清除深度画不出来立体图像)
+}
+
+void SparseSurfelFusion::DrawMesh::drawMesh(glm::mat4& view, glm::mat4& projection, glm::mat4& model)
+{
+	// 激活着色器
+	meshShader.BindProgram(); //renderer构造时已经编译
+
+	meshShader.SetUniformVector("objectColor", 0.7f, 0.7f, 0.7f);	// 模型灰色
+	meshShader.SetUniformVector("lightColor", 1.0f, 1.0f, 1.0f);	// 光照颜色
+	meshShader.SetUniformVector("lightPos", -1.2f, -1.0f, -2.0f);	// 光照位置
+
+	//设置透视矩阵
+	projection = glm::perspective(glm::radians(30.0f), (float)WindowWidth / (float)WindowHeight, 0.1f, 100.0f);
+	meshShader.setUniformMat4(std::string("projection"), projection); // 注意:目前我们每帧设置投影矩阵，但由于投影矩阵很少改变，所以最好在主循环之外设置它一次。
+	float radius = 3.0f;//摄像头绕的半径
+	float camX = static_cast<float>(sin(glfwGetTime() * 0.5f) * radius);
+	float camZ = static_cast<float>(cos(glfwGetTime() * 0.5f) * radius);
+	view = glm::lookAt(glm::vec3(camX, radius, camZ), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	//view = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+	meshShader.setUniformMat4(std::string("view"), view);
+	meshShader.SetUniformVector("viewPos", glm::vec3(camX, radius, camZ));
+	//meshShader.SetUniformVector("viewPos", glm::vec3(0.0f, 0.0f, 3.0f));
+	model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
+	model = glm::rotate(model, glm::radians(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));//绕Up向量(0,1,0)旋转
+	meshShader.setUniformMat4(std::string("model"), model);
+
+	glBindVertexArray(GeometryVAO); // 绑定VAO后绘制
+	glDrawElements(GL_TRIANGLES, TranglesCount * 3, GL_UNSIGNED_INT, 0);
+	// 清除绑定
+	glBindVertexArray(0);
+	meshShader.UnbindProgram();
+}
+
+void SparseSurfelFusion::DrawMesh::drawCoordinateSystem(glm::mat4& view, glm::mat4& projection, glm::mat4& model)
+{
+	// 绘制坐标系
+	coordinateShader.BindProgram();	// 绑定坐标轴的shader
+	coordinateShader.setUniformMat4(std::string("projection"), projection);
+	coordinateShader.setUniformMat4(std::string("view"), view);
+	coordinateShader.setUniformMat4(std::string("model"), model);
+	glBindVertexArray(coordinateSystemVAO); // 绑定VAO后绘制
+
+	glLineWidth(3.0f);
+	glDrawArrays(GL_LINES, 0, 34);	// box有54个元素，绘制线段
+
+	// 清除绑定
+	glBindVertexArray(0);
+	coordinateShader.UnbindProgram();
+}
+
+void SparseSurfelFusion::DrawMesh::swapBufferAndCatchEvent()
+{
+	// 函数会交换颜色缓冲（它是一个储存着GLFW窗口每一个像素颜色值的大缓冲），它在这一迭代中被用来绘制，并且将会作为输出显示在屏幕上
+	glfwSwapBuffers(window);
+	glfwPollEvents();
 }
 
 

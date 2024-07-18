@@ -72,7 +72,7 @@ __global__ void SparseSurfelFusion::device::initVertexOwner(DeviceArrayView<OctN
 
 #pragma unroll
 	for (int i = 0; i < 8; i++) {			// 为每个顶点找一个对应的节点
-		for (int j = 0; j < 27; j++) {		// 遍历节点及邻居(供27个节点)，顶点对应key最小的节点，即key最小的节点拥有这个vertex(vertex一直是正方体左下后的那个点)
+		for (int j = 0; j < 27; j++) {		// 遍历节点及邻居(供27个节点)，顶点对应key最小的节点，即key最小的节点拥有这个vertex
 			if ((neighbor[j] != -1) && (device::SquareDistance(vertexPos[i], neighborCenter[j]) < WidthSquare)) { // 邻居节点必须有效，拥有这个vertex的节点不可以超过一个体素的宽
 				int neighborKey = NodeArray[neighbor[j]].key;
 				if (NodeOwnerKey[i] > neighborKey) {	// 如果neighborKey更小

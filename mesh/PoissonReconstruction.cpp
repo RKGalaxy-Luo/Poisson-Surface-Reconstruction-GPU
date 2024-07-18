@@ -187,7 +187,7 @@ SparseSurfelFusion::DeviceArrayView<SparseSurfelFusion::DepthSurfel> SparseSurfe
 	return DenseSurfel.ArrayView();
 }
 
-void SparseSurfelFusion::PoissonReconstruction::SolvePoissionReconstructionMesh(DeviceArrayView<DepthSurfel> denseSurfel, CoredVectorMeshData& mesh)
+void SparseSurfelFusion::PoissonReconstruction::SolvePoissionReconstructionMesh(DeviceArrayView<DepthSurfel> denseSurfel)
 {
 
 	const unsigned int DenseSurfelCount = denseSurfel.Size();
@@ -234,16 +234,19 @@ void SparseSurfelFusion::PoissonReconstruction::SolvePoissionReconstructionMesh(
 	DeviceArrayView<FaceNode> faceArray = MeshGeometryPtr->GetFaceArray();
 	DeviceArrayView<float> dx = LaplacianSolverPtr->GetDx();
 	const float isoValue = LaplacianSolverPtr->GetIsoValue();
-	TriangleIndicesPtr->calculateTriangleIndices(vertexArray, edgeArray, faceArray, OctreeNodeArrayHandle, baseFunctions, dx, encodeNodeIndexInFunction, NodeArrayDepthIndex, NodeArrayNodeCenter, isoValue, BaseAddressArray[Constants::maxDepth_Host], NodeArrayCount[Constants::maxDepth_Host], mesh, MeshStream[0]);
+	TriangleIndicesPtr->calculateTriangleIndices(vertexArray, edgeArray, faceArray, OctreeNodeArrayHandle, baseFunctions, dx, encodeNodeIndexInFunction, NodeArrayDepthIndex, NodeArrayNodeCenter, isoValue, BaseAddressArray[Constants::maxDepth_Host], NodeArrayCount[Constants::maxDepth_Host], MeshStream[0]);
 
 	CHECKCUDA(cudaDeviceSynchronize());	// 所有算法完成，同步整个GPU
 }
 
 
-void SparseSurfelFusion::PoissonReconstruction::DrawRebuildMesh(CoredVectorMeshData& mesh)
+void SparseSurfelFusion::PoissonReconstruction::DrawRebuildMesh()
 {
-	DrawConstructedMesh->CalculateMeshNormals(mesh);
-	DrawConstructedMesh->DrawRenderedMesh(mesh);
+	DeviceArrayView<Point3D<float>> MeshVertices = TriangleIndicesPtr->GetRebuildMeshVertices();
+	DeviceArrayView<TriangleIndex> MeshTriangleIndices = TriangleIndicesPtr->GetRebuildMeshTriangleIndices();
+	DrawConstructedMesh->CalculateMeshNormals(MeshVertices, MeshTriangleIndices, MeshStream[0]);
+	DrawConstructedMesh->DrawRenderedMesh(MeshStream[0]);
+	CHECKCUDA(cudaDeviceSynchronize());
 }
 
 void SparseSurfelFusion::PoissonReconstruction::saveCloudWithNormal(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::Normal>::Ptr normals)

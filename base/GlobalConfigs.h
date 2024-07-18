@@ -4,7 +4,8 @@
 
 #define CUB_IGNORE_DEPRECATED_API
 
-#define MAX_SURFEL_COUNT 200000		// 最大面元个数
+#define MAX_SURFEL_COUNT 200000			// 最大面元个数
+#define MAX_MESH_TRIANGLE_COUNT 600000	// 最大网格三角形数量
 
 #define FORCE_UNIT_NORMALS 1
 

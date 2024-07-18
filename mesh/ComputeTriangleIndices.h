@@ -88,12 +88,12 @@ namespace SparseSurfelFusion {
 		 * \param triAddress 三角形偏移地址
 		 * \param TriangleBuffer 记录所构成的三角形
 		 */
-		__global__ void generateTrianglePos(DeviceArrayView<OctNode> NodeArray, DeviceArrayView<FaceNode> FaceArray, DeviceArrayView<int> triNums, DeviceArrayView<int> cubeCatagory, DeviceArrayView<int> vexAddress, DeviceArrayView<int> triAddress, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, int* TriangleBuffer, int* hasSurfaceIntersection);
+		__global__ void generateTrianglePos(DeviceArrayView<OctNode> NodeArray, DeviceArrayView<FaceNode> FaceArray, DeviceArrayView<int> triNums, DeviceArrayView<int> cubeCatagory, DeviceArrayView<int> vexAddress, DeviceArrayView<int> triAddress, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, TriangleIndex* TriangleBuffer, int* hasSurfaceIntersection);
 
 		/**
 		 * \brief 获得细分三角形位置.
 		 */
-		__global__ void generateSubdivideTrianglePos(const EasyOctNode* SubdivideArray, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, const int* SubdivideTriNums, const int* SubdivideCubeCatagory, const int* SubdivideVexAddress, const int* SubdivideTriAddress, int* SubdivideTriangleBuffer);
+		__global__ void generateSubdivideTrianglePos(const EasyOctNode* SubdivideArray, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, const int* SubdivideTriNums, const int* SubdivideCubeCatagory, const int* SubdivideVexAddress, const int* SubdivideTriAddress, TriangleIndex* SubdivideTriangleBuffer);
 
 		/**
 		 * \brief 处理其他层级的叶子节点的三角形和相交情况, 记录在NodeArray中.
@@ -286,6 +286,15 @@ namespace SparseSurfelFusion {
 		 */
 		__global__ void wholeRebuildArray(DeviceArrayView<OctNode> SubdivideNode, const unsigned int finerDepthStart, const unsigned int finerSubdivideNum, const unsigned int NodeArraySize, const int* SubdivideDepthBuffer, const int* depthNodeAddress_Device, const int* fixedDepthAddress, EasyOctNode* RebuildArray, int* RebuildDepthBuffer, Point3D<float>* RebuildCenterBuffer, int* ReplaceNodeId, int* IsRoot, OctNode* NodeArray);
 
+		/**
+		 * \brief 获得有效的网格顶点.
+		 */
+		__global__ void markValidMeshVertexIndex(const Point3D<float>* VertexBuffer, const unsigned int verticesNum, bool* markValidVertices);
+
+		/**
+		 * \brief 获得有效的三角面元索引.
+		 */
+		__global__ void markValidMeshTriangleIndex(TriangleIndex* TriangleBuffer, const unsigned int previousVertexOffset, const unsigned int allTriNums, const unsigned int verticesNum, bool* markValidTriangleIndex);
 	}
 	class ComputeTriangleIndices
 	{
@@ -311,14 +320,26 @@ namespace SparseSurfelFusion {
 		 * \param DLevelOffset maxDepth层NodeArray偏移
 		 * \param stream cuda流
 		 */
-		void calculateTriangleIndices(DeviceArrayView<VertexNode> VertexArray, DeviceArrayView<EdgeNode> EdgeArray, DeviceArrayView<FaceNode> FaceArray, DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, const float isoValue, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, CoredVectorMeshData& mesh, cudaStream_t stream);
+		void calculateTriangleIndices(DeviceArrayView<VertexNode> VertexArray, DeviceArrayView<EdgeNode> EdgeArray, DeviceArrayView<FaceNode> FaceArray, DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, const float isoValue, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, cudaStream_t stream);
 
-		///**
-		// * \brief 获得计算好的网格.
-		// *
-		// * \return 计算好的网格
-		// */
-		//CoredVectorMeshData GetMesh() { return mesh; }
+		/**
+		 * \brief 获得重建网格的顶点.
+		 *
+		 * \return 重建网格的顶点.
+		 */
+		DeviceArrayView<Point3D<float>> GetRebuildMeshVertices() {
+			return MeshTriangleVertex.ArrayView();
+		}
+
+		/**
+		 * \brief 获得重建网格的索引.
+		 *
+		 * \return 重建网格的索引.
+		 */
+		DeviceArrayView<TriangleIndex> GetRebuildMeshTriangleIndices() {
+			return MeshTriangleIndex.ArrayView();
+		}
+
 
 	private:
 		DeviceBufferArray<float> vvalue;								// 【论文参数】顶点隐式函数值
@@ -332,7 +353,10 @@ namespace SparseSurfelFusion {
 
 		DeviceBufferArray<bool> markValidSubdividedNode;				// 标记节点是否可以被细分优化
 
-		//CoredVectorMeshData mesh;										// 三角形网格
+		DeviceBufferArray<TriangleIndex> MeshTriangleIndex;				// 三角网格绘制索引
+		DeviceBufferArray<bool> markValidTriangleIndex;					// 标记有效的网格索引
+		DeviceBufferArray<Point3D<float>> MeshTriangleVertex;			// 网格顶点
+		DeviceBufferArray<bool> markValidTriangleVertex;				// 标记有效的网格顶点
 
 		DeviceBufferArray<OctNode> SubdivideNode;						// 细分节点，将生成的三角剖分细分
 
@@ -388,7 +412,7 @@ namespace SparseSurfelFusion {
 		 * \param DLevelNodeCount 第maxDepth层节点数量
 		 * \param stream cuda流
 		 */
-		void generateTriangleNumsAndTriangleAddress(DeviceArrayView<OctNode> NodeArray, DeviceArrayView<float> vvalue, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, CoredVectorMeshData& mesh, cudaStream_t stream);
+		void generateTriangleNumsAndTriangleAddress(DeviceArrayView<OctNode> NodeArray, DeviceArrayView<float> vvalue, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, cudaStream_t stream);
 
 		/**
 		 * \brief 生成顶点以及三角形.
@@ -400,7 +424,7 @@ namespace SparseSurfelFusion {
 		 * \param DLevelNodeCount 第maxDepth层节点数量
 		 * \param stream cuda流
 		 */
-		void generateVerticesAndTriangle(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<VertexNode> VertexArray, DeviceArrayView<EdgeNode> EdgeArray, DeviceArrayView<FaceNode> FaceArray, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, CoredVectorMeshData& mesh, cudaStream_t stream);
+		void generateVerticesAndTriangle(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<VertexNode> VertexArray, DeviceArrayView<EdgeNode> EdgeArray, DeviceArrayView<FaceNode> FaceArray, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, cudaStream_t stream);
 
 		/**
 		 * \brief 插入三角形.
@@ -413,7 +437,16 @@ namespace SparseSurfelFusion {
 		 */
 		void insertTriangle(const Point3D<float>* VertexBufferHost, const int& allVexNums, const int* TriangleBufferHost, const int& allTriNums, CoredVectorMeshData& mesh);
 	
-	
+		/**
+		 * \brief 插入三角形.
+		 *
+		 * \param VertexBuffer 顶点数组
+		 * \param allVexNums 所有有效顶点数量
+		 * \param TriangleBuffer 三角形数组
+		 * \param allTriNums 所有有效三角形数量
+		 */
+		void insertTriangle(Point3D<float>* VertexBuffer, const int allVexNums, TriangleIndex* TriangleBuffer, const int allTriNums, cudaStream_t stream);
+
 		/**
 		 * \brief 生成细分节点的数组以及不同层细分节点的数量和偏移【GPU硬件限制，无法使用流异步操作，需要Share Memory > 64kb的GPU】.
 		 * 
@@ -436,7 +469,7 @@ namespace SparseSurfelFusion {
 		 * \param isoValue 等值
 		 * \param stream cuda流
 		 */
-		void CoarserSubdivideNodeAndRebuildMesh(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const float isoValue, CoredVectorMeshData& mesh, cudaStream_t stream);
+		void CoarserSubdivideNodeAndRebuildMesh(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const float isoValue, cudaStream_t stream);
 
 		/**
 		 * \brief 精节点细分并重构网格【似乎可以与Coarser并行，开两个线程】.
@@ -450,7 +483,7 @@ namespace SparseSurfelFusion {
 		 * \param isoValue 等值
 		 * \param stream cuda流
 		 */
-		void FinerSubdivideNodeAndRebuildMesh(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const float isoValue, CoredVectorMeshData& mesh, cudaStream_t stream);
+		void FinerSubdivideNodeAndRebuildMesh(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const float isoValue, cudaStream_t stream);
 
 
 	};

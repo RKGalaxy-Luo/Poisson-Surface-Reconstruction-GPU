@@ -24,10 +24,9 @@ int main(int argc, char** argv) {
 		}
 		printf("··········································  第 %lld 帧  ··········································  \n", Frame);
 		auto start = std::chrono::high_resolution_clock::now();						// 记录开始时间点
-		CoredVectorMeshData mesh;	// 网格
-		PoissonRecon.SolvePoissionReconstructionMesh(PoissonRecon.getDenseSurfel(), mesh);
-		PoissonRecon.DrawRebuildMesh(mesh);
-		mesh.clearAllContainer();
+		PoissonRecon.SolvePoissionReconstructionMesh(PoissonRecon.getDenseSurfel());
+		PoissonRecon.DrawRebuildMesh();
+
 		auto end = std::chrono::high_resolution_clock::now();							// 记录结束时间点
 		std::chrono::duration<double, std::milli> duration = end - start;				// 计算执行时间（以ms为单位）
 		std::cout << "算法运行整体时间: " << duration.count() << " ms" << std::endl;		// 输出

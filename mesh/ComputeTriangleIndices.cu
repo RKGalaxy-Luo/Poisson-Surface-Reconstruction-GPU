@@ -34,6 +34,8 @@ namespace SparseSurfelFusion {
 
         __device__ __constant__ int maxIntValue = 0x7fffffff;		// 最大int值
 
+        __device__ __constant__ float eps = EPSILON;
+
         __device__ __constant__ int edgeVertex[12][2] = { {0,1}, {2,3}, {4,5}, {6,7}, {0,3}, {1,2},
                                                           {4,7}, {5,6}, {0,4}, {1,5}, {3,7}, {2,6} };
         
@@ -473,7 +475,7 @@ __device__ void SparseSurfelFusion::device::interpolatePoint(const Point3D<float
     out.coords[dim] = p2.coords[dim] * pivot + p1.coords[dim] * anotherPivot;
 }
 
-__global__ void SparseSurfelFusion::device::generateTrianglePos(DeviceArrayView<OctNode> NodeArray, DeviceArrayView<FaceNode> FaceArray, DeviceArrayView<int> triNums, DeviceArrayView<int> cubeCatagory, DeviceArrayView<int> vexAddress, DeviceArrayView<int> triAddress, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, int* TriangleBuffer, int* hasSurfaceIntersection)
+__global__ void SparseSurfelFusion::device::generateTrianglePos(DeviceArrayView<OctNode> NodeArray, DeviceArrayView<FaceNode> FaceArray, DeviceArrayView<int> triNums, DeviceArrayView<int> cubeCatagory, DeviceArrayView<int> vexAddress, DeviceArrayView<int> triAddress, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, TriangleIndex* TriangleBuffer, int* hasSurfaceIntersection)
 {
     const unsigned int idx = threadIdx.x + blockDim.x * blockIdx.x;
     if (idx >= DLevelNodeCount)	return;
@@ -481,16 +483,16 @@ __global__ void SparseSurfelFusion::device::generateTrianglePos(DeviceArrayView<
     OctNode currentNode = NodeArray[offset];
     int currentTriNum = triNums[idx];
     int currentCubeCatagory = cubeCatagory[idx];
-    int currentTriangleBufferStart = 3 * triAddress[idx];
+    int currentTriangleBufferStart = triAddress[idx];
     int edgeHasVertex[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
     //if (idx % 1000 == 0) printf("index = %d   TriNum = %d\n", idx, currentTriNum);
 
-    for (int i = 0; i < 3 * currentTriNum; i += 3) {
+    for (int i = 0; i < currentTriNum; i++) {
         int edgeIdx[3];
-        edgeIdx[0] = device::triangles[currentCubeCatagory][i];
-        edgeIdx[1] = device::triangles[currentCubeCatagory][i + 1];
-        edgeIdx[2] = device::triangles[currentCubeCatagory][i + 2];
+        edgeIdx[0] = device::triangles[currentCubeCatagory][3 * i];
+        edgeIdx[1] = device::triangles[currentCubeCatagory][3 * i + 1];
+        edgeIdx[2] = device::triangles[currentCubeCatagory][3 * i + 2];
 
         edgeHasVertex[edgeIdx[0]] = 1;
         edgeHasVertex[edgeIdx[1]] = 1;
@@ -501,14 +503,14 @@ __global__ void SparseSurfelFusion::device::generateTrianglePos(DeviceArrayView<
         vertexIdx[1] = vexAddress[currentNode.edges[edgeIdx[1]] - 1];
         vertexIdx[2] = vexAddress[currentNode.edges[edgeIdx[2]] - 1];
 
-        TriangleBuffer[currentTriangleBufferStart + i] = vertexIdx[0];
-        TriangleBuffer[currentTriangleBufferStart + i + 1] = vertexIdx[1];
-        TriangleBuffer[currentTriangleBufferStart + i + 2] = vertexIdx[2];
+        TriangleBuffer[currentTriangleBufferStart + i].idx[0] = vertexIdx[0];
+        TriangleBuffer[currentTriangleBufferStart + i].idx[1] = vertexIdx[1];
+        TriangleBuffer[currentTriangleBufferStart + i].idx[2] = vertexIdx[2];
     }
     int currentFace;
     int parentNodeIndex;
     for (int i = 0; i < 6; i++) {
-        int mark = 0;
+        int mark = 0;              // 记录是否存在Surface-Edge Intersections(面边相交)
         for (int j = 0; j < 4; j++) {
             mark |= edgeHasVertex[device::faceEdges[i][j]];
         }
@@ -525,30 +527,30 @@ __global__ void SparseSurfelFusion::device::generateTrianglePos(DeviceArrayView<
     }
 }
 
-__global__ void SparseSurfelFusion::device::generateSubdivideTrianglePos(const EasyOctNode* SubdivideArray, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, const int* SubdivideTriNums, const int* SubdivideCubeCatagory, const int* SubdivideVexAddress, const int* SubdivideTriAddress, int* SubdivideTriangleBuffer)
+__global__ void SparseSurfelFusion::device::generateSubdivideTrianglePos(const EasyOctNode* SubdivideArray, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, const int* SubdivideTriNums, const int* SubdivideCubeCatagory, const int* SubdivideVexAddress, const int* SubdivideTriAddress, TriangleIndex* SubdivideTriangleBuffer)
 {
     const unsigned int idx = threadIdx.x + blockDim.x * blockIdx.x;
     if (idx >= DLevelNodeCount)	return;
     const unsigned int offset = DLevelOffset + idx;
     int nowTriNum = SubdivideTriNums[idx];
     int nowCubeCatagory = SubdivideCubeCatagory[idx];
-    int nowTriangleBufferStart = 3 * SubdivideTriAddress[idx];
-    //if (offset % 1000 == 0) printf("idx = %d  nowTriangleBufferStart = %d\n", offset, nowTriangleBufferStart);
-
-    for (int i = 0; i < 3 * nowTriNum; i += 3) {
+    int nowTriangleBufferStart = SubdivideTriAddress[idx];
+    //if (flag == true && nowTriNum != 0) printf("idx = %d   nowTriNum = %d   nowTriangleBufferStart = %d\n", idx, nowTriNum, nowTriangleBufferStart);
+    for (int i = 0; i < nowTriNum; i++) {
         int edgeIdx[3];
-        edgeIdx[0] = triangles[nowCubeCatagory][i];
-        edgeIdx[1] = triangles[nowCubeCatagory][i + 1];
-        edgeIdx[2] = triangles[nowCubeCatagory][i + 2];
+        edgeIdx[0] = triangles[nowCubeCatagory][3 * i];
+        edgeIdx[1] = triangles[nowCubeCatagory][3 * i + 1];
+        edgeIdx[2] = triangles[nowCubeCatagory][3 * i + 2];
 
         int vertexIdx[3];
         vertexIdx[0] = SubdivideVexAddress[SubdivideArray[offset].edges[edgeIdx[0]] - 1];
         vertexIdx[1] = SubdivideVexAddress[SubdivideArray[offset].edges[edgeIdx[1]] - 1];
         vertexIdx[2] = SubdivideVexAddress[SubdivideArray[offset].edges[edgeIdx[2]] - 1];
-        //if (offset % 1000 == 0) printf("Offset = %d  SubdivideTriangleBuffer[%d] = %d\n", offset, nowTriangleBufferStart + i, vertexIdx[0]);
-        SubdivideTriangleBuffer[nowTriangleBufferStart + i] = vertexIdx[0];
-        SubdivideTriangleBuffer[nowTriangleBufferStart + i + 1] = vertexIdx[1];
-        SubdivideTriangleBuffer[nowTriangleBufferStart + i + 2] = vertexIdx[2];
+        SubdivideTriangleBuffer[nowTriangleBufferStart + i].idx[0] = vertexIdx[0];
+        SubdivideTriangleBuffer[nowTriangleBufferStart + i].idx[1] = vertexIdx[1];
+        SubdivideTriangleBuffer[nowTriangleBufferStart + i].idx[2] = vertexIdx[2];
+        //if (flag == true)    printf("idx = %d   nowTriangleBufferStart = %d   vertexIdx[%d] = (%d, %d, %d)\n", idx, nowTriangleBufferStart, nowTriangleBufferStart + i, vertexIdx[0], vertexIdx[1], vertexIdx[2]);
+
     }
 }
 
@@ -565,6 +567,7 @@ __global__ void SparseSurfelFusion::device::ProcessLeafNodesAtOtherDepth(DeviceA
             break;
         }
     }
+
     NodeArray[idx].hasTriangle = hasTri;
 
     int hasIntersection = 0;
@@ -575,6 +578,7 @@ __global__ void SparseSurfelFusion::device::ProcessLeafNodesAtOtherDepth(DeviceA
         }
     }
     NodeArray[idx].hasIntersection = hasIntersection;
+
 
     if ((NodeArray[idx].children[0] == -1) && (hasTri || hasIntersection)) {
         markValidSubdividedNode[idx] = true;
@@ -1104,7 +1108,6 @@ __global__ void SparseSurfelFusion::device::initFixedDepthNums(DeviceArrayView<O
         fixedDepthNums[(depth - 1) * DepthNodeCount + idx] = nodeNum;
         nodeNum <<= 3;  // 乘8
     }
-
 }
 
 __global__ void SparseSurfelFusion::device::wholeRebuildArray(DeviceArrayView<OctNode> SubdivideNode, const unsigned int finerDepthStart, const unsigned int finerSubdivideNum, const unsigned int NodeArraySize, const int* SubdivideDepthBuffer, const int* depthNodeAddress_Device, const int* fixedDepthAddress, EasyOctNode* RebuildArray, int* RebuildDepthBuffer, Point3D<float>* RebuildCenterBuffer, int* ReplaceNodeId, int* IsRoot, OctNode* NodeArray)
@@ -1119,7 +1122,6 @@ __global__ void SparseSurfelFusion::device::wholeRebuildArray(DeviceArrayView<Oc
     int nowDepth = SubdivideDepthBuffer[offset];
     int fixedDepthOffset = fixedDepthAddress[(nowDepth - 1) * finerSubdivideNum + idx];
     int nowIdx = depthNodeAddress[nowDepth] + fixedDepthOffset;
-    //if (offset % 1000 == 0) printf("idx = %d   nowIdx = %d  nowDepth = %d\n", offset, nowIdx, nowDepth);
     OctNode rootNode = SubdivideNode[offset];
     int replacedId = rootNode.neighs[13];
     rootNode.neighs[13] = NodeArraySize + nowIdx;
@@ -1133,7 +1135,6 @@ __global__ void SparseSurfelFusion::device::wholeRebuildArray(DeviceArrayView<Oc
     Point3D<float> thisNodeCenter;
     getNodeCenterAllDepth(rootNode.key, nowDepth, thisNodeCenter);
     RebuildCenterBuffer[nowIdx] = thisNodeCenter;
-    //if (offset % 1000 == 0) printf("idx = %d   thisNodeCenter = (%.5f, %.5f, %.5f)\n", offset, thisNodeCenter.coords[0], thisNodeCenter.coords[1], thisNodeCenter.coords[2]);
 
     int sonKey = (rootNode.key >> (3 * (device::maxDepth - nowDepth))) & 7;
     NodeArray[rootNode.parent].children[sonKey] = NodeArraySize + nowIdx;
@@ -1166,6 +1167,42 @@ __global__ void SparseSurfelFusion::device::wholeRebuildArray(DeviceArrayView<Oc
             }
         }
         childrenNums <<= 3;
+    }
+}
+
+__global__ void SparseSurfelFusion::device::markValidMeshVertexIndex(const Point3D<float>* VertexBuffer, const unsigned int verticesNum, bool* markValidVertices)
+{
+    const unsigned int idx = threadIdx.x + blockDim.x * blockIdx.x;
+    if (idx >= verticesNum) return;
+    if (fabsf(VertexBuffer[idx].coords[0]) < device::eps) {
+        printf("构建顶点发生错误！VertexBuffer[%d] = (%.5f, %.5f, %.5f)", idx, VertexBuffer[idx].coords[0], VertexBuffer[idx].coords[1], VertexBuffer[idx].coords[2]);
+        markValidVertices[idx] = false;
+    }
+    else {
+        markValidVertices[idx] = true;
+    }
+}
+
+__global__ void SparseSurfelFusion::device::markValidMeshTriangleIndex(TriangleIndex* TriangleBuffer, const unsigned int previousVertexOffset, const unsigned int allTriNums, const unsigned int verticesNum, bool* markValidTriangleIndex)
+{
+    const unsigned int idx = threadIdx.x + blockDim.x * blockIdx.x;
+    if (idx >= allTriNums) return;
+    bool triValid = true;
+    TriangleIndex tri;
+    for (int i = 0; i < 3; i++) {
+        tri.idx[i] = TriangleBuffer[idx].idx[i] + previousVertexOffset;
+        if (tri.idx[i] < 0 || tri.idx[i] >= verticesNum + previousVertexOffset) {
+            triValid = false;
+        }
+    }
+
+    TriangleBuffer[idx] = tri;
+    if (triValid) {
+        markValidTriangleIndex[idx] = true;
+    }
+    else {
+        printf("三角索引构建错误！ index = %d   PreOffset = %d   verticesNum = %d   TriangleBuffer = (%d, %d, %d)\n", idx, previousVertexOffset, verticesNum, tri.idx[0], tri.idx[1], tri.idx[2]);
+        markValidTriangleIndex[idx] = false;
     }
 }
 
@@ -1208,6 +1245,43 @@ void SparseSurfelFusion::ComputeTriangleIndices::insertTriangle(const Point3D<fl
         }
         mesh.addTriangle(tri, inCoreFlag);
     }
+}
+
+void SparseSurfelFusion::ComputeTriangleIndices::insertTriangle(Point3D<float>* VertexBuffer, const int allVexNums, TriangleIndex* TriangleBuffer, const int allTriNums, cudaStream_t stream)
+{
+    dim3 block_vex(128);
+    dim3 grid_vex(divUp(allVexNums, block_vex.x));
+    device::markValidMeshVertexIndex << <grid_vex, block_vex, 0, stream >> > (VertexBuffer, allVexNums, markValidTriangleVertex.Ptr());
+
+    unsigned int* validVerticesCount = NULL;    // 有效的顶点
+    unsigned int validVerticesCountHost = 0;
+    CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&validVerticesCount), sizeof(unsigned int), stream));
+
+    void* d_temp_storage_1 = NULL;    // 中间变量，用完即可释放
+    size_t temp_storage_bytes_1 = 0;  // 中间变量
+    CHECKCUDA(cub::DeviceSelect::Flagged(d_temp_storage_1, temp_storage_bytes_1, VertexBuffer, markValidTriangleVertex.Ptr(), MeshTriangleVertex.Ptr() + MeshTriangleVertex.ArraySize(), validVerticesCount, allVexNums, stream, false));	// 确定临时设备存储需求
+    CHECKCUDA(cudaMallocAsync(&d_temp_storage_1, temp_storage_bytes_1, stream));
+    CHECKCUDA(cub::DeviceSelect::Flagged(d_temp_storage_1, temp_storage_bytes_1, VertexBuffer, markValidTriangleVertex.Ptr(), MeshTriangleVertex.Ptr() + MeshTriangleVertex.ArraySize(), validVerticesCount, allVexNums, stream, false));	// 筛选	
+    CHECKCUDA(cudaMemcpyAsync(&validVerticesCountHost, validVerticesCount, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream));
+
+    dim3 block_tri(128);
+    dim3 grid_tri(divUp(allTriNums, block_tri.x));
+    device::markValidMeshTriangleIndex << <grid_tri, block_tri, 0, stream >> > (TriangleBuffer, MeshTriangleVertex.ArraySize(), allTriNums, allVexNums, markValidTriangleIndex.Ptr());
+
+    unsigned int* validTriangleIndicesCount = NULL;    // 有效的三角索引数组数量
+    unsigned int validTriangleIndicesCountHost = 0;
+    CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&validTriangleIndicesCount), sizeof(unsigned int), stream));
+
+    void* d_temp_storage_2 = NULL;    // 中间变量，用完即可释放
+    size_t temp_storage_bytes_2 = 0;  // 中间变量
+    CHECKCUDA(cub::DeviceSelect::Flagged(d_temp_storage_2, temp_storage_bytes_2, TriangleBuffer, markValidTriangleIndex.Ptr(), MeshTriangleIndex.Ptr() + MeshTriangleIndex.ArraySize(), validTriangleIndicesCount, allTriNums, stream, false));	// 确定临时设备存储需求
+    CHECKCUDA(cudaMallocAsync(&d_temp_storage_2, temp_storage_bytes_2, stream));
+    CHECKCUDA(cub::DeviceSelect::Flagged(d_temp_storage_2, temp_storage_bytes_2, TriangleBuffer, markValidTriangleIndex.Ptr(), MeshTriangleIndex.Ptr() + MeshTriangleIndex.ArraySize(), validTriangleIndicesCount, allTriNums, stream, false));	// 筛选	
+    CHECKCUDA(cudaMemcpyAsync(&validTriangleIndicesCountHost, validTriangleIndicesCount, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream));
+
+    CHECKCUDA(cudaStreamSynchronize(stream));
+    MeshTriangleVertex.ResizeArrayOrException(validVerticesCountHost + MeshTriangleVertex.ArraySize());
+    MeshTriangleIndex.ResizeArrayOrException(validTriangleIndicesCountHost + MeshTriangleIndex.ArraySize());
 }
 
 void SparseSurfelFusion::ComputeTriangleIndices::generateSubdivideNodeArrayCountAndAddress(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<unsigned int> DepthBuffer, const unsigned int OtherDepthNodeCount, cudaStream_t stream)
@@ -1264,10 +1338,10 @@ void SparseSurfelFusion::ComputeTriangleIndices::generateSubdivideNodeArrayCount
     CHECKCUDA(cudaStreamSynchronize(stream));
 
     for (int i = 0; i <= Constants::maxDepth_Host; i++) {
-        printf("第 %d 层细分节点数量：%d   ", i, SubdivideDepthCount[i]);
+        //printf("第 %d 层细分节点数量：%d   ", i, SubdivideDepthCount[i]);
         if (i == 0) SubdivideDepthAddress[i] = 0;
         else SubdivideDepthAddress[i] = SubdivideDepthAddress[i - 1] + SubdivideDepthCount[i - 1];
-        printf("节点偏移：%d\n", SubdivideDepthAddress[i]);
+        //printf("节点偏移：%d\n", SubdivideDepthAddress[i]);
     }
 
 }
@@ -1293,7 +1367,7 @@ void SparseSurfelFusion::ComputeTriangleIndices::generateVertexNumsAndVertexAddr
     CHECKCUDA(cudaFreeAsync(tempStorage, stream));
 }
 
-void SparseSurfelFusion::ComputeTriangleIndices::generateTriangleNumsAndTriangleAddress(DeviceArrayView<OctNode> NodeArray, DeviceArrayView<float> vvalue, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, CoredVectorMeshData& mesh, cudaStream_t stream)
+void SparseSurfelFusion::ComputeTriangleIndices::generateTriangleNumsAndTriangleAddress(DeviceArrayView<OctNode> NodeArray, DeviceArrayView<float> vvalue, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, cudaStream_t stream)
 {
     triNums.ResizeArrayOrException(DLevelNodeCount);
     cubeCatagory.ResizeArrayOrException(DLevelNodeCount);
@@ -1311,11 +1385,10 @@ void SparseSurfelFusion::ComputeTriangleIndices::generateTriangleNumsAndTriangle
     CHECKCUDA(cudaFreeAsync(tempStorage, stream));
 }
 
-void SparseSurfelFusion::ComputeTriangleIndices::generateVerticesAndTriangle(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<VertexNode> VertexArray, DeviceArrayView<EdgeNode> EdgeArray, DeviceArrayView<FaceNode> FaceArray, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, CoredVectorMeshData& mesh, cudaStream_t stream)
+void SparseSurfelFusion::ComputeTriangleIndices::generateVerticesAndTriangle(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<VertexNode> VertexArray, DeviceArrayView<EdgeNode> EdgeArray, DeviceArrayView<FaceNode> FaceArray, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, cudaStream_t stream)
 {
     const unsigned int EdgeArraySize = EdgeArray.Size();
     const unsigned int FaceArraySize = FaceArray.Size();
-    //printf("EdgeArraySize = %d   FaceArraySize = %d \n", EdgeArraySize, FaceArraySize);
 
     int lastVexAddr;
     int lastVexNums;
@@ -1366,8 +1439,8 @@ void SparseSurfelFusion::ComputeTriangleIndices::generateVerticesAndTriangle(Dev
     CHECKCUDA(cudaStreamSynchronize(stream));   // 这里需要统计一下所有顶点的数量
     int allTriNums = lastTriAddr + lastTriNums;
 
-    int* TriangleBuffer = NULL;
-    CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&TriangleBuffer), sizeof(int) * 3 * allTriNums, stream));
+    TriangleIndex* TriangleBuffer = NULL;
+    CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&TriangleBuffer), sizeof(TriangleIndex) * allTriNums, stream));
 
     int* hasSurfaceIntersection = NULL;
     CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&hasSurfaceIntersection), sizeof(int) * FaceArraySize, stream));
@@ -1378,15 +1451,7 @@ void SparseSurfelFusion::ComputeTriangleIndices::generateVerticesAndTriangle(Dev
     device::generateTrianglePos << <grid_2, block_2, 0, stream >> > (NodeArray.ArrayView(), FaceArray, triNums.ArrayView(), cubeCatagory.ArrayView(), vexAddress.ArrayView(), triAddress.ArrayView(), DLevelOffset, DLevelNodeCount, TriangleBuffer, hasSurfaceIntersection);
     CHECKCUDA(cudaStreamSynchronize(stream));   // 这里需要统计一下所有顶点的数量
 
-    std::vector<Point3D<float>> VertexBufferHost;
-    VertexBufferHost.resize(allVexNums);
-    CHECKCUDA(cudaMemcpyAsync(VertexBufferHost.data(), VertexBuffer, sizeof(Point3D<float>) * allVexNums, cudaMemcpyDeviceToHost, stream));
-
-    std::vector<int> TriangleBufferHost;
-    TriangleBufferHost.resize(allTriNums * 3);
-    CHECKCUDA(cudaMemcpyAsync(TriangleBufferHost.data(), TriangleBuffer, sizeof(int) * allTriNums * 3, cudaMemcpyDeviceToHost, stream));
-
-    insertTriangle(VertexBufferHost.data(), allVexNums, TriangleBufferHost.data(), allTriNums, mesh);
+    insertTriangle(VertexBuffer, allVexNums, TriangleBuffer, allTriNums, stream);
 
     markValidSubdividedNode.ResizeArrayOrException(DLevelOffset);
 
@@ -1408,7 +1473,7 @@ void SparseSurfelFusion::ComputeTriangleIndices::generateVerticesAndTriangle(Dev
 }
 
 
-void SparseSurfelFusion::ComputeTriangleIndices::CoarserSubdivideNodeAndRebuildMesh(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const float isoValue, CoredVectorMeshData& mesh, cudaStream_t stream)
+void SparseSurfelFusion::ComputeTriangleIndices::CoarserSubdivideNodeAndRebuildMesh(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const float isoValue, cudaStream_t stream)
 {
     int minSubdivideRootDepth;
     SubdivideDepthBuffer.SynchronizeToHost(stream);
@@ -1633,9 +1698,9 @@ void SparseSurfelFusion::ComputeTriangleIndices::CoarserSubdivideNodeAndRebuildM
         CHECKCUDA(cudaFreeAsync(tempTriAddressStorage, stream));
 
         Point3D<float>* SubdivideVertexBuffer = NULL;
-        std::vector<Point3D<float>> SubdivideVertexBufferHost;
         CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&SubdivideVertexBuffer), sizeof(Point3D<float>) * SubdivideAllVexNums, stream));
-        SubdivideVertexBufferHost.resize(SubdivideAllVexNums);
+        //std::vector<Point3D<float>> SubdivideVertexBufferHost;
+        //SubdivideVertexBufferHost.resize(SubdivideAllVexNums);
 
         EdgeNode* SubdivideValidEdgeArray = NULL;
         CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&SubdivideValidEdgeArray), sizeof(EdgeNode) * SubdivideAllVexNums, stream));
@@ -1668,7 +1733,7 @@ void SparseSurfelFusion::ComputeTriangleIndices::CoarserSubdivideNodeAndRebuildM
         dim3 block_10(128);
         dim3 grid_10(divUp(SubdivideAllVexNums, block_10.x));
         device::generateSubdivideIntersectionPoint << <grid_10, block_10, 0, stream >> > (SubdivideValidEdgeArray, SubdivideVertexArray, SubdivideArray, SubdivideValidVexAddress, SubdivideVvalue, SubdivideValidEdgeArraySizeHost, NodeArraySize, SubdivideVertexBuffer);
-        CHECKCUDA(cudaMemcpyAsync(SubdivideVertexBufferHost.data(), SubdivideVertexBuffer, sizeof(Point3D<float>) * SubdivideAllVexNums, cudaMemcpyDeviceToHost, stream));
+        //CHECKCUDA(cudaMemcpyAsync(SubdivideVertexBufferHost.data(), SubdivideVertexBuffer, sizeof(Point3D<float>) * SubdivideAllVexNums, cudaMemcpyDeviceToHost, stream));
 
         CHECKCUDA(cudaFreeAsync(SubdivideValidEdgeArray, stream));
         CHECKCUDA(cudaFreeAsync(SubdivideValidVexAddress, stream));
@@ -1686,19 +1751,27 @@ void SparseSurfelFusion::ComputeTriangleIndices::CoarserSubdivideNodeAndRebuildM
         int SubdivideAllTriNums = SubdivideLastTriAddr + SubdivideLastTriNums;
         //printf("depth = %d   SubdivideAllTriNums = %d\n", i, SubdivideAllTriNums);
 
-        int* SubdivideTriangleBuffer = NULL;
-        CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&SubdivideTriangleBuffer), sizeof(int) * 3 * SubdivideAllTriNums, stream));
-        std::vector<int> SubdivideTriangleBufferHost;
-        SubdivideTriangleBufferHost.resize(3 * SubdivideAllTriNums);
+        TriangleIndex* SubdivideTriangleBuffer = NULL;
+        CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&SubdivideTriangleBuffer), sizeof(TriangleIndex) * SubdivideAllTriNums, stream));
+        //CHECKCUDA(cudaMemsetAsync(SubdivideTriangleBuffer, 0, sizeof(TriangleIndex) * SubdivideAllTriNums, stream));
+
+        //std::vector<int> SubdivideTriangleBufferHost;
+        //SubdivideTriangleBufferHost.resize(3 * SubdivideAllTriNums);
 
         dim3 block_11(128);
         dim3 grid_11(divUp(fixedDepthNodeNum[Constants::maxDepth_Host], block_11.x));
         device::generateSubdivideTrianglePos << <grid_11, block_11, 0, stream >> > (SubdivideArray, fixedDepthNodeAddress[Constants::maxDepth_Host], fixedDepthNodeNum[Constants::maxDepth_Host], SubdivideTriNums, SubdivideCubeCatagory, SubdivideVexAddress, SubdivideTriAddress, SubdivideTriangleBuffer);
-        CHECKCUDA(cudaMemcpyAsync(SubdivideTriangleBufferHost.data(), SubdivideTriangleBuffer, sizeof(int) * 3 * SubdivideAllTriNums, cudaMemcpyDeviceToHost, stream));
+
+
+
+        insertTriangle(SubdivideVertexBuffer, SubdivideAllVexNums, SubdivideTriangleBuffer, SubdivideAllTriNums, stream);
+        //CHECKCUDA(cudaMemcpyAsync(SubdivideTriangleBufferHost.data(), SubdivideTriangleBuffer, sizeof(int) * 3 * SubdivideAllTriNums, cudaMemcpyDeviceToHost, stream));
 
         CHECKCUDA(cudaStreamSynchronize(stream));   // 流同步
         
-        insertTriangle(SubdivideVertexBufferHost.data(), SubdivideAllVexNums, SubdivideTriangleBufferHost.data(), SubdivideAllTriNums, mesh);
+
+
+        //insertTriangle(SubdivideVertexBufferHost.data(), SubdivideAllVexNums, SubdivideTriangleBufferHost.data(), SubdivideAllTriNums, mesh);
 
         CHECKCUDA(cudaMemcpy(&(NodeArray[rootParent].children[rootSonKey]), &rootIndex, sizeof(int), cudaMemcpyHostToDevice));
         CHECKCUDA(cudaFreeAsync(SubdivideVertexArray, stream));
@@ -1717,7 +1790,7 @@ void SparseSurfelFusion::ComputeTriangleIndices::CoarserSubdivideNodeAndRebuildM
     CHECKCUDA(cudaFreeAsync(SubdivideArrayDepthBuffer, stream));
 }
 
-void SparseSurfelFusion::ComputeTriangleIndices::FinerSubdivideNodeAndRebuildMesh(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const float isoValue, CoredVectorMeshData& mesh, cudaStream_t stream)
+void SparseSurfelFusion::ComputeTriangleIndices::FinerSubdivideNodeAndRebuildMesh(DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, const float isoValue, cudaStream_t stream)
 {
     const unsigned int NodeArraySize = NodeArray.ArraySize();
     for (int i = finerDepth; i < Constants::maxDepth_Host; i++) {
@@ -1993,8 +2066,8 @@ void SparseSurfelFusion::ComputeTriangleIndices::FinerSubdivideNodeAndRebuildMes
 
         Point3D<float>* RebuildVertexBuffer = NULL;
         CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&RebuildVertexBuffer), sizeof(Point3D<float>)* RebuildAllVexNums, stream));
-        std::vector<Point3D<float>> RebuildVertexBufferHost;
-        RebuildVertexBufferHost.resize(RebuildAllVexNums);
+        //std::vector<Point3D<float>> RebuildVertexBufferHost;
+        //RebuildVertexBufferHost.resize(RebuildAllVexNums);
 
         EdgeNode* RebuildValidEdgeArray = NULL;
         CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&RebuildValidEdgeArray), sizeof(EdgeNode)* RebuildAllVexNums, stream));
@@ -2051,25 +2124,24 @@ void SparseSurfelFusion::ComputeTriangleIndices::FinerSubdivideNodeAndRebuildMes
 
         //printf("RebuildAllTriNums = %d\n", RebuildAllTriNums);
 
-        int* RebuildTriangleBuffer = NULL;
-        std::vector<int> RebuildTriangleBufferHost;
-        RebuildTriangleBufferHost.resize(RebuildAllTriNums * 3);
-        CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&RebuildTriangleBuffer), sizeof(int) * 3 * RebuildAllTriNums, stream));
-        
+        TriangleIndex* RebuildTriangleBuffer = NULL;
+        CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&RebuildTriangleBuffer), sizeof(TriangleIndex) * RebuildAllTriNums, stream));
+        //std::vector<int> RebuildTriangleBufferHost;
+        //RebuildTriangleBufferHost.resize(RebuildAllTriNums * 3);
 
         CHECKCUDA(cudaStreamSynchronize(stream));   // 流同步
         //printf("###############################   Depth = %d   #################################\n", i);
-
         dim3 block_11(128);
         dim3 grid_11(divUp(rebuildDLevelCount, block_11.x));
         device::generateSubdivideTrianglePos << <grid_11, block_11, 0, stream >> > (RebuildArray, depthNodeAddress[Constants::maxDepth_Host], rebuildDLevelCount, RebuildTriNums, RebuildCubeCatagory, RebuildVexAddress, RebuildTriAddress, RebuildTriangleBuffer);
+        insertTriangle(RebuildVertexBuffer, RebuildAllVexNums, RebuildTriangleBuffer, RebuildAllTriNums, stream);
 
-        CHECKCUDA(cudaMemcpyAsync(RebuildVertexBufferHost.data(), RebuildVertexBuffer, sizeof(Point3D<float>) * RebuildAllVexNums, cudaMemcpyDeviceToHost, stream));
-        CHECKCUDA(cudaMemcpyAsync(RebuildTriangleBufferHost.data(), RebuildTriangleBuffer, sizeof(int) * 3 * RebuildAllTriNums, cudaMemcpyDeviceToHost, stream));
+        //CHECKCUDA(cudaMemcpyAsync(RebuildVertexBufferHost.data(), RebuildVertexBuffer, sizeof(Point3D<float>) * RebuildAllVexNums, cudaMemcpyDeviceToHost, stream));
+        //CHECKCUDA(cudaMemcpyAsync(RebuildTriangleBufferHost.data(), RebuildTriangleBuffer, sizeof(int) * 3 * RebuildAllTriNums, cudaMemcpyDeviceToHost, stream));
 
-        CHECKCUDA(cudaStreamSynchronize(stream));   // 流同步
+        //CHECKCUDA(cudaStreamSynchronize(stream));   // 流同步
 
-        insertTriangle(RebuildVertexBufferHost.data(), RebuildAllVexNums, RebuildTriangleBufferHost.data(), RebuildAllTriNums, mesh);
+        //insertTriangle(RebuildVertexBufferHost.data(), RebuildAllVexNums, RebuildTriangleBufferHost.data(), RebuildAllTriNums, mesh);
 
         CHECKCUDA(cudaFreeAsync(fixedDepthNums, stream));
         CHECKCUDA(cudaFreeAsync(depthNodeAddress_Device, stream));

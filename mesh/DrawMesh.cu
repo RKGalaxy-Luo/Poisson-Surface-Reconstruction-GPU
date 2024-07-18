@@ -111,63 +111,72 @@ __global__ void SparseSurfelFusion::device::CalculateVerticesAverageNormals(cons
 
 }
 
-void SparseSurfelFusion::DrawMesh::CalculateMeshNormals(CoredVectorMeshData& mesh, cudaStream_t stream)
+void SparseSurfelFusion::DrawMesh::CalculateMeshNormals(DeviceArrayView<Point3D<float>> meshVertices, DeviceArrayView<TriangleIndex> meshTriangleIndices, cudaStream_t stream)
 {
 
 #ifdef CHECK_MESH_BUILD_TIME_COST
 	auto time1 = std::chrono::high_resolution_clock::now();					// 记录开始时间点
 #endif // CHECK_MESH_BUILD_TIME_COST
 
-	const unsigned int MeshCount = mesh.triangleCount();
-	const unsigned int VerticesCount = mesh.inCorePoints.size();
+	TranglesCount = meshTriangleIndices.Size();
+	VerticesCount = meshVertices.Size();
+	MeshVertices.ResizeArrayOrException(VerticesCount);
+	MeshTriangleIndices.ResizeArrayOrException(TranglesCount);
 
-	VerticesNormals.resize(VerticesCount);
+	CHECKCUDA(cudaMemcpyAsync(MeshVertices.Ptr(), meshVertices.RawPtr(), sizeof(Point3D<float>) * VerticesCount, cudaMemcpyDeviceToDevice, stream));
+	CHECKCUDA(cudaMemcpyAsync(MeshTriangleIndices.Ptr(), meshTriangleIndices.RawPtr(), sizeof(TriangleIndex) * TranglesCount, cudaMemcpyDeviceToDevice, stream));
+
+
+	//VerticesNormals.resize(VerticesCount);
 	Point3D<float>* MeshNormalsDevice = NULL;	// 记录计算得到的三角网格的法线
-	CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&MeshNormalsDevice), sizeof(Point3D<float>) * MeshCount, stream));
+	CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&MeshNormalsDevice), sizeof(Point3D<float>) * TranglesCount, stream));
 
-	std::vector<TriangleIndex> TriangleIndexHost;
-	mesh.GetTriangleIndices(TriangleIndexHost);
+	//std::vector<TriangleIndex> TriangleIndexHost;
+	//mesh.GetTriangleIndices(TriangleIndexHost);
 	//std::cout << "TriangleIndexHostCount = " << TriangleIndexHost.size() << std::endl;
 
-	TriangleIndex* TriangleIndexDevice = NULL;	// 三角网格索引
-	CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&TriangleIndexDevice), sizeof(TriangleIndex) * MeshCount, stream));
-	CHECKCUDA(cudaMemcpyAsync(TriangleIndexDevice, TriangleIndexHost.data(), sizeof(Point3D<float>) * MeshCount, cudaMemcpyHostToDevice, stream));
+	//TriangleIndex* TriangleIndexDevice = NULL;	// 三角网格索引
+	//CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&TriangleIndexDevice), sizeof(TriangleIndex) * MeshCount, stream));
+	//CHECKCUDA(cudaMemcpyAsync(TriangleIndexDevice, TriangleIndexHost.data(), sizeof(Point3D<float>) * MeshCount, cudaMemcpyHostToDevice, stream));
 
-	std::vector<Point3D<float>> VerticesArrayHost;
-	mesh.GetVertexArray(VerticesArrayHost);
+	//std::vector<Point3D<float>> VerticesArrayHost;
+	//mesh.GetVertexArray(VerticesArrayHost);
 	//std::cout << "VerticesArrayHostCount = " << VerticesArrayHost.size() << std::endl;
 
-	Point3D<float>* VerticesArrayDevice = NULL;		// 顶点数组
-	CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&VerticesArrayDevice), sizeof(Point3D<float>) * VerticesCount, stream));
-	CHECKCUDA(cudaMemcpyAsync(VerticesArrayDevice, VerticesArrayHost.data(), sizeof(Point3D<float>) * VerticesCount, cudaMemcpyHostToDevice, stream));
-
+	//Point3D<float>* VerticesArrayDevice = NULL;		// 顶点数组
+	//CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&VerticesArrayDevice), sizeof(Point3D<float>) * VerticesCount, stream));
+	//CHECKCUDA(cudaMemcpyAsync(VerticesArrayDevice, VerticesArrayHost.data(), sizeof(Point3D<float>) * VerticesCount, cudaMemcpyHostToDevice, stream));
+	//  << <grid_Mesh, block_Mesh, 0, stream >> > 
 	dim3 block_Mesh(256);
-	dim3 grid_Mesh(divUp(MeshCount, block_Mesh.x));
-	device::CalculateMeshNormalsKernel << <grid_Mesh, block_Mesh, 0, stream >> > (VerticesArrayDevice, TriangleIndexDevice, MeshCount, MeshNormalsDevice);
+	dim3 grid_Mesh(divUp(TranglesCount, block_Mesh.x));
+	device::CalculateMeshNormalsKernel << <grid_Mesh, block_Mesh, 0, stream >> > (MeshVertices.ArrayView(), MeshTriangleIndices.ArrayView(), TranglesCount, MeshNormalsDevice);
 
 	unsigned int* ConnectedTriangleNum = NULL;		// 记录一个顶点有多少邻接的三角形
 	CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&ConnectedTriangleNum), sizeof(unsigned int) * VerticesCount, stream));
 	CHECKCUDA(cudaMemsetAsync(ConnectedTriangleNum, 0, sizeof(unsigned int) * VerticesCount, stream));
-	device::CountConnectedTriangleNumKernel << <grid_Mesh, block_Mesh, 0, stream >> > (TriangleIndexDevice, MeshCount, ConnectedTriangleNum);
+	device::CountConnectedTriangleNumKernel << <grid_Mesh, block_Mesh, 0, stream >> > (MeshTriangleIndices.ArrayView(), TranglesCount, ConnectedTriangleNum);
 
 	Point3D<float>* VerticesNormalsSum = NULL;		// 记录其邻接的三角Mesh的法线向量和
 	CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&VerticesNormalsSum), sizeof(Point3D<float>) * VerticesCount, stream));
 	CHECKCUDA(cudaMemsetAsync(VerticesNormalsSum, 0.0f, sizeof(Point3D<float>) * VerticesCount, stream));
-	device::VerticesNormalsSumKernel << <grid_Mesh, block_Mesh, 0, stream >> > (MeshNormalsDevice, TriangleIndexDevice, MeshCount, VerticesNormalsSum);
+	device::VerticesNormalsSumKernel << <grid_Mesh, block_Mesh, 0, stream >> > (MeshNormalsDevice, MeshTriangleIndices.ArrayView(), TranglesCount, VerticesNormalsSum);
 
-	Point3D<float>* VerticesAverageNormals = NULL;	// 归一化的顶点平均法向量
-	CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&VerticesAverageNormals), sizeof(Point3D<float>) * VerticesCount, stream));
+	VerticesAverageNormals.ResizeArrayOrException(VerticesCount);
+
+	//// << <grid_vertex, block_vertex, 0, stream >> > 
+	//Point3D<float>* VerticesAverageNormals = NULL;	// 归一化的顶点平均法向量
+	//CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&VerticesAverageNormals), sizeof(Point3D<float>) * VerticesCount, stream));
 	dim3 block_vertex(256);
 	dim3 grid_vertex(divUp(VerticesCount, block_vertex.x));
-	device::CalculateVerticesAverageNormals << <grid_vertex, block_vertex, 0, stream >> > (ConnectedTriangleNum, VerticesNormalsSum, VerticesCount, VerticesAverageNormals);
+	device::CalculateVerticesAverageNormals << <grid_vertex, block_vertex, 0, stream >> > (ConnectedTriangleNum, VerticesNormalsSum, VerticesCount, VerticesAverageNormals.Ptr());
 
-	CHECKCUDA(cudaMemcpyAsync(VerticesNormals.data(), VerticesAverageNormals, sizeof(Point3D<float>) * VerticesCount, cudaMemcpyDeviceToHost, stream));
+	//CHECKCUDA(cudaMemcpyAsync(VerticesNormals.data(), VerticesAverageNormals, sizeof(Point3D<float>) * VerticesCount, cudaMemcpyDeviceToHost, stream));
 
 	CHECKCUDA(cudaFreeAsync(MeshNormalsDevice, stream));
-	CHECKCUDA(cudaFreeAsync(TriangleIndexDevice, stream));
-	CHECKCUDA(cudaFreeAsync(VerticesArrayDevice, stream));
+	//CHECKCUDA(cudaFreeAsync(TriangleIndexDevice, stream));
+	//CHECKCUDA(cudaFreeAsync(VerticesArrayDevice, stream));
 	CHECKCUDA(cudaFreeAsync(ConnectedTriangleNum, stream));
-	CHECKCUDA(cudaFreeAsync(VerticesAverageNormals, stream));
+	CHECKCUDA(cudaFreeAsync(VerticesNormalsSum, stream));
 
 	CHECKCUDA(cudaStreamSynchronize(stream));
 

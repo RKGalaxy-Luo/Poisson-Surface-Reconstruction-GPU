@@ -118,12 +118,12 @@ namespace SparseSurfelFusion {
 		 *
 		 * \param denseSurfel 传入稠密点
 		 */
-		void SolvePoissionReconstructionMesh(DeviceArrayView<DepthSurfel> denseSurfel, CoredVectorMeshData& mesh);
+		void SolvePoissionReconstructionMesh(DeviceArrayView<DepthSurfel> denseSurfel);
 
 		/**
 		 * \brief OpenGL绘制重建的网格.
 		 */
-		void DrawRebuildMesh(CoredVectorMeshData& mesh);
+		void DrawRebuildMesh();
 
 		DeviceArrayView<DepthSurfel> getDenseSurfel();
 

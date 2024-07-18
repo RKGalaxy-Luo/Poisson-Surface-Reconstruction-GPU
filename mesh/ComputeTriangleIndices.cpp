@@ -25,6 +25,13 @@ SparseSurfelFusion::ComputeTriangleIndices::ComputeTriangleIndices()
 	markValidFinerVexArray.AllocateBuffer(int(1 << 22));
 	markValidFinerEdge.AllocateBuffer(int(1 << 22));
 	markValidFinerVexNum.AllocateBuffer(int(1 << 22));
+
+	MeshTriangleIndex.AllocateBuffer(MAX_MESH_TRIANGLE_COUNT);
+	markValidTriangleIndex.AllocateBuffer(MAX_MESH_TRIANGLE_COUNT);
+	markValidTriangleIndex.ResizeArrayOrException(MAX_MESH_TRIANGLE_COUNT);
+	MeshTriangleVertex.AllocateBuffer(MAX_SURFEL_COUNT);
+	markValidTriangleVertex.AllocateBuffer(MAX_SURFEL_COUNT);
+	markValidTriangleVertex.ResizeArrayOrException(MAX_SURFEL_COUNT);
 }
 
 SparseSurfelFusion::ComputeTriangleIndices::~ComputeTriangleIndices()
@@ -46,13 +53,21 @@ SparseSurfelFusion::ComputeTriangleIndices::~ComputeTriangleIndices()
 	markValidFinerVexArray.ReleaseBuffer();
 	markValidFinerEdge.ReleaseBuffer();
 	markValidFinerVexNum.ReleaseBuffer();
+
+	MeshTriangleIndex.ReleaseBuffer();
+	markValidTriangleIndex.ReleaseBuffer();
+	MeshTriangleVertex.ReleaseBuffer();
+	markValidTriangleVertex.ReleaseBuffer();
 }
 
-void SparseSurfelFusion::ComputeTriangleIndices::calculateTriangleIndices(DeviceArrayView<VertexNode> VertexArray, DeviceArrayView<EdgeNode> EdgeArray, DeviceArrayView<FaceNode> FaceArray, DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, const float isoValue, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, CoredVectorMeshData& mesh, cudaStream_t stream)
+void SparseSurfelFusion::ComputeTriangleIndices::calculateTriangleIndices(DeviceArrayView<VertexNode> VertexArray, DeviceArrayView<EdgeNode> EdgeArray, DeviceArrayView<FaceNode> FaceArray, DeviceBufferArray<OctNode>& NodeArray, DeviceArrayView<ConfirmedPPolynomial<CONVTIMES + 1, CONVTIMES + 2>> BaseFunction, DeviceArrayView<float> dx, DeviceArrayView<int> encodeNodeIndexInFunction, DeviceArrayView<unsigned int> DepthBuffer, DeviceArrayView<Point3D<float>> CenterBuffer, const float isoValue, const unsigned int DLevelOffset, const unsigned int DLevelNodeCount, cudaStream_t stream)
 {
 #ifdef CHECK_MESH_BUILD_TIME_COST
 	auto time1 = std::chrono::high_resolution_clock::now();					// 记录开始时间点
 #endif // CHECK_MESH_BUILD_TIME_COST
+	/**************************** Step 0: 清空上一帧的Mesh顶点及索引 ****************************/
+	MeshTriangleIndex.ResizeArrayOrException(0);
+	MeshTriangleVertex.ResizeArrayOrException(0);
 
 	//printf("VertexCount = %d   EdgeCount = %d   FaceCount = %d\n", VertexArray.Size(), EdgeArray.Size(), FaceArray.Size());
 
@@ -75,7 +90,7 @@ void SparseSurfelFusion::ComputeTriangleIndices::calculateTriangleIndices(Device
 #endif // CHECK_MESH_BUILD_TIME_COST
 
 	/**************************** Step 3: 计算三角形数量以及地址 ****************************/
-	generateTriangleNumsAndTriangleAddress(NodeArray.ArrayView(), vvalue.ArrayView(), DLevelOffset, DLevelNodeCount, mesh, stream);
+	generateTriangleNumsAndTriangleAddress(NodeArray.ArrayView(), vvalue.ArrayView(), DLevelOffset, DLevelNodeCount, stream);
 #ifdef CHECK_MESH_BUILD_TIME_COST
 	CHECKCUDA(cudaStreamSynchronize(stream));
 	auto time4 = std::chrono::high_resolution_clock::now();							// 记录结束时间点
@@ -84,7 +99,7 @@ void SparseSurfelFusion::ComputeTriangleIndices::calculateTriangleIndices(Device
 #endif // CHECK_MESH_BUILD_TIME_COST
 
 	/**************************** Step 4 & 5: 生成节点及三角形网格 ****************************/
-	generateVerticesAndTriangle(NodeArray, VertexArray, EdgeArray, FaceArray, DLevelOffset, DLevelNodeCount, mesh, stream);
+	generateVerticesAndTriangle(NodeArray, VertexArray, EdgeArray, FaceArray, DLevelOffset, DLevelNodeCount, stream);
 #ifdef CHECK_MESH_BUILD_TIME_COST
 	CHECKCUDA(cudaStreamSynchronize(stream));
 	auto time5 = std::chrono::high_resolution_clock::now();							// 记录结束时间点
@@ -102,7 +117,7 @@ void SparseSurfelFusion::ComputeTriangleIndices::calculateTriangleIndices(Device
 #endif // CHECK_MESH_BUILD_TIME_COST
 
 	/**************************** Step 7: 处理粗节点细分重构网格【Coarser和Finer后续可以用两个线程两个流执行】 ****************************/
-	CoarserSubdivideNodeAndRebuildMesh(NodeArray, DepthBuffer, CenterBuffer, BaseFunction, dx, encodeNodeIndexInFunction, isoValue, mesh, stream);
+	CoarserSubdivideNodeAndRebuildMesh(NodeArray, DepthBuffer, CenterBuffer, BaseFunction, dx, encodeNodeIndexInFunction, isoValue, stream);
 #ifdef CHECK_MESH_BUILD_TIME_COST	
 	CHECKCUDA(cudaStreamSynchronize(stream));
 	auto time7 = std::chrono::high_resolution_clock::now();							// 记录结束时间点
@@ -111,7 +126,7 @@ void SparseSurfelFusion::ComputeTriangleIndices::calculateTriangleIndices(Device
 #endif // CHECK_MESH_BUILD_TIME_COST
 
 	/**************************** Step 8: 处理精节点细分重构网格【Coarser和Finer后续可以用两个线程两个流执行】 ****************************/
-	FinerSubdivideNodeAndRebuildMesh(NodeArray, DepthBuffer, CenterBuffer, BaseFunction, dx, encodeNodeIndexInFunction, isoValue, mesh, stream);
+	FinerSubdivideNodeAndRebuildMesh(NodeArray, DepthBuffer, CenterBuffer, BaseFunction, dx, encodeNodeIndexInFunction, isoValue, stream);
 #ifdef CHECK_MESH_BUILD_TIME_COST		
 	CHECKCUDA(cudaStreamSynchronize(stream));
 	auto time8 = std::chrono::high_resolution_clock::now();							// 记录结束时间点

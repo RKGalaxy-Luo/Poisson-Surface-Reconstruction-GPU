@@ -403,9 +403,8 @@ __global__ void SparseSurfelFusion::device::updateNodeArrayParentAndChildrenKern
 		NodeArray[idx].parent = -1;										// 如果是第0层节点
 #pragma unroll	// 展开循环，加速运算
 		for (int child = 0; child < 8; child++) {						// 计算Children在NodeArray的位置
-			//printf("第 0 层 Child[%d] = %d\n", child, NodeArray[idx].children[child]);
-			NodeArray[idx].children[child] += BaseAddressArray_Device[depth + 1];
-			//printf("第 0 层 Child[%d] = %d   BaseAddressArray = %d\n", child, NodeArray[idx].children[child], BaseAddressArray_Device[depth + 1]);
+			//NodeArray[idx].children[child] += BaseAddressArray_Device[depth + 1];
+			NodeArray[idx].children[child] = child + 1;		// 第一层节点可以有某些节点完全是空的，但是作为第一层节点必须满排，不能有index错误的
 		}
 	}
 	else {
