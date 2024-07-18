@@ -1569,6 +1569,10 @@ void SparseSurfelFusion::ComputeTriangleIndices::CoarserSubdivideNodeAndRebuildM
 
         CHECKCUDA(cudaStreamSynchronize(stream));       // 同步流，获得SubdivideVertexArraySizeHost
 
+        if (SubdivideVertexArraySizeHost == 0) {        // 该节点没有可细分的顶点【求隐式表面，顶点和边缺一不可】
+            CHECKCUDA(cudaFreeAsync(SubdivideVertexArray, stream));
+            continue;
+        }
         //printf("SubdivideVertexArraySizeHost = %d\n", SubdivideVertexArraySizeHost);
 
 
@@ -1609,6 +1613,11 @@ void SparseSurfelFusion::ComputeTriangleIndices::CoarserSubdivideNodeAndRebuildM
 
         CHECKCUDA(cudaStreamSynchronize(stream));       // 同步流，获得SubdivideEdgeArraySizeHost
 
+        if (SubdivideEdgeArraySizeHost == 0) {          // 该节点没有可细分的边【求隐式表面，顶点和边缺一不可】
+            CHECKCUDA(cudaFreeAsync(SubdivideVertexArray, stream));
+            CHECKCUDA(cudaFreeAsync(SubdivideEdgeArray, stream));
+            continue;
+        }
         //printf("SubdivideEdgeArraySizeHost = %d\n", SubdivideEdgeArraySizeHost);
 
 
@@ -1958,7 +1967,19 @@ void SparseSurfelFusion::ComputeTriangleIndices::FinerSubdivideNodeAndRebuildMes
         CHECKCUDA(cudaFreeAsync(RebuildVertexArraySize, stream));  // 临时变量，即时删除
         CHECKCUDA(cudaFreeAsync(d_temp_storage_1, stream));        // 临时变量，即时删除
 
-        //CHECKCUDA(cudaStreamSynchronize(stream));
+        CHECKCUDA(cudaStreamSynchronize(stream));                   // 获得RebuildVertexArraySizeHost
+        if (RebuildVertexArraySizeHost == 0) {                      // 细分顶点为0，则直接下一层【计算隐式函数值，顶点和边缺一不可】
+            CHECKCUDA(cudaFreeAsync(fixedDepthNums, stream));
+            CHECKCUDA(cudaFreeAsync(depthNodeAddress_Device, stream));
+            CHECKCUDA(cudaFreeAsync(fixedDepthAddress, stream));
+            CHECKCUDA(cudaFreeAsync(RebuildArray, stream));
+            CHECKCUDA(cudaFreeAsync(RebuildDepthBuffer, stream));
+            CHECKCUDA(cudaFreeAsync(RebuildCenterBuffer, stream));
+            CHECKCUDA(cudaFreeAsync(ReplaceNodeId, stream));
+            CHECKCUDA(cudaFreeAsync(IsRoot, stream));
+            CHECKCUDA(cudaFreeAsync(RebuildVertexArray, stream));
+            continue;
+        }
         //printf("depth = %d  RebuildVertexArraySize = %d\n", i, RebuildVertexArraySizeHost);
 
         dim3 block_4(128);
@@ -1994,7 +2015,20 @@ void SparseSurfelFusion::ComputeTriangleIndices::FinerSubdivideNodeAndRebuildMes
         CHECKCUDA(cudaFreeAsync(RebuildEdgeArraySize, stream));     // 临时变量，即时删除
         CHECKCUDA(cudaFreeAsync(d_temp_storage_2, stream));         // 临时变量，即时删除
 
-        //CHECKCUDA(cudaStreamSynchronize(stream));
+        CHECKCUDA(cudaStreamSynchronize(stream));                   // 这里需要同步，获得RebuildEdgeArraySizeHost
+        if (RebuildEdgeArraySizeHost == 0) {                        // 细分边为0，则直接下一层【计算隐式函数值，顶点和边缺一不可】
+            CHECKCUDA(cudaFreeAsync(fixedDepthNums, stream));
+            CHECKCUDA(cudaFreeAsync(depthNodeAddress_Device, stream));
+            CHECKCUDA(cudaFreeAsync(fixedDepthAddress, stream));
+            CHECKCUDA(cudaFreeAsync(RebuildArray, stream));
+            CHECKCUDA(cudaFreeAsync(RebuildDepthBuffer, stream));
+            CHECKCUDA(cudaFreeAsync(RebuildCenterBuffer, stream));
+            CHECKCUDA(cudaFreeAsync(ReplaceNodeId, stream));
+            CHECKCUDA(cudaFreeAsync(IsRoot, stream));
+            CHECKCUDA(cudaFreeAsync(RebuildVertexArray, stream));
+            CHECKCUDA(cudaFreeAsync(RebuildEdgeArray, stream));
+            continue;
+        }
         //printf("depth = %d  RebuildVertexArraySize = %d  RebuildEdgeArraySize = %d\n", i, RebuildVertexArraySizeHost, RebuildEdgeArraySizeHost);
 
         dim3 block_6(128);
