@@ -30,3 +30,5 @@
 **实验效果**
 
 ![](OutputResult/Result.gif)
+
+![](OutputResult/ColoredResult.gif)
