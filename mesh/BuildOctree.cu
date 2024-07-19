@@ -138,6 +138,7 @@ __global__ void SparseSurfelFusion::device::getCoordinateAndNormalKernel(Oriente
 	if (idx >= pointsCount) return;
 	point[idx].point = Point3D<float>(PointCloud[idx].VertexAndConfidence.x, PointCloud[idx].VertexAndConfidence.y, PointCloud[idx].VertexAndConfidence.z);
 	point[idx].normal = Point3D<float>(PointCloud[idx].NormalAndRadius.x, PointCloud[idx].NormalAndRadius.y, PointCloud[idx].NormalAndRadius.z);
+	point[idx].color = Point3D<float>(PointCloud[idx].ColorAndTime.x, PointCloud[idx].ColorAndTime.y, PointCloud[idx].ColorAndTime.z);
 }
 
 __global__ void SparseSurfelFusion::device::adjustPointsCoordinateAndNormalKernel(OrientedPoint3D<float>* points, const Point3D<float> center, const float maxEdge, const unsigned int pointsCount)

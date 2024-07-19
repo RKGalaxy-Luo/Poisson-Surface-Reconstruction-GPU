@@ -51,8 +51,8 @@ __global__ void SparseSurfelFusion::device::initVertexOwner(DeviceArrayView<OctN
 	float halfWidth = 1.0f / (1 << (depth + 1));							// 节点体素一半的宽
 	float Width = 1.0f / (1 << depth);										// 节点体素的宽
 	float WidthSquare = Width * Width;										// 节点体素宽的平方
-	Point3D<float> neighborCenter[27] = { Point3D<float>(0, 0, 0) };		// 节点的27个邻居节点的中心位置
-	int neighbor[27] = { -1 };														// 节点的27个邻居的index
+	Point3D<float> neighborCenter[27];										// 节点的27个邻居节点的中心位置
+	int neighbor[27];														// 节点的27个邻居的index
 #pragma unroll
 	for (int i = 0; i < 27; i++) {
 		neighbor[i] = NodeArray[idx].neighs[i];

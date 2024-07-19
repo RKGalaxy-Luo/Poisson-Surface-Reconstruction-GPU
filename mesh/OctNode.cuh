@@ -20,7 +20,7 @@ namespace SparseSurfelFusion{
         int parent;         // 1个父节点
         int children[8];    // 8个孩子节点
         int neighs[27];     // 27个邻居节点
-        // record the start in maxDepth NodeArray the first node at maxDepth is index 0
+        // 在maxDepth NodeArray中记录开始，maxDepth处的第一个节点索引为0
         int didx;           // 当前节点下属的深度为D的子节点第一个点，idx最小的点
         int dnum;           // 当前节点下属的深度为D的子节点的数量，包括有效点和无效点
 

@@ -15,6 +15,7 @@ void framebufferSizeCallback(GLFWwindow* window, int width, int height)
 SparseSurfelFusion::DrawMesh::DrawMesh()
 {
 	VerticesAverageNormals.AllocateBuffer(MAX_SURFEL_COUNT);
+	VerticesAverageColors.AllocateBuffer(MAX_SURFEL_COUNT);
 	MeshVertices.AllocateBuffer(MAX_SURFEL_COUNT);
 	MeshTriangleIndices.AllocateBuffer(MAX_MESH_TRIANGLE_COUNT);
 
@@ -74,11 +75,24 @@ SparseSurfelFusion::DrawMesh::DrawMesh()
 SparseSurfelFusion::DrawMesh::~DrawMesh()
 {
 	VerticesAverageNormals.ReleaseBuffer();
+	VerticesAverageColors.ReleaseBuffer();
 	MeshVertices.ReleaseBuffer();
 	MeshTriangleIndices.ReleaseBuffer();
+
+
 	glDeleteVertexArrays(1, &GeometryVAO);
 	glDeleteBuffers(1, &GeometryVBO);
 	glDeleteBuffers(1, &GeometryIBO);
+}
+
+void SparseSurfelFusion::DrawMesh::setInput(DeviceArrayView<Point3D<float>> meshVertices, DeviceArrayView<TriangleIndex> meshTriangleIndices, DeviceArrayView<OrientedPoint3D<float>> samplePoints)
+{
+	TranglesCount = meshTriangleIndices.Size();
+	VerticesCount = meshVertices.Size();
+	DensePointsCount = samplePoints.Size();
+	MeshVertices.ResizeArrayOrException(VerticesCount);
+	VerticesAverageColors.ResizeArrayOrException(VerticesCount);
+	MeshTriangleIndices.ResizeArrayOrException(TranglesCount);
 }
 
 void SparseSurfelFusion::DrawMesh::DrawRenderedMesh(cudaStream_t stream)
@@ -141,10 +155,11 @@ void SparseSurfelFusion::DrawMesh::registerCudaResources()
 
 	glBindBuffer(GL_ARRAY_BUFFER, GeometryVBO);	// 绑定VBO
 
-	// x,y,z,nx,ny,nz = 6个GLfloat
-	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * Constants::maxSurfelsNum * 6, NULL, GL_DYNAMIC_DRAW);
-	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(GLfloat) * Constants::maxSurfelsNum * 3, NULL);												// 分批加载属性数组
+	// x,y,z,nx,ny,nz,r,g,b = 9个GLfloat
+	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * Constants::maxSurfelsNum * 9, NULL, GL_DYNAMIC_DRAW);
+	glBufferSubData(GL_ARRAY_BUFFER, sizeof(GLfloat) * Constants::maxSurfelsNum * 0, sizeof(GLfloat) * Constants::maxSurfelsNum * 3, NULL);	// 分批加载属性数组							// 分批加载属性数组
 	glBufferSubData(GL_ARRAY_BUFFER, sizeof(GLfloat) * Constants::maxSurfelsNum * 3, sizeof(GLfloat) * Constants::maxSurfelsNum * 3, NULL);	// 分批加载属性数组
+	glBufferSubData(GL_ARRAY_BUFFER, sizeof(GLfloat) * Constants::maxSurfelsNum * 6, sizeof(GLfloat) * Constants::maxSurfelsNum * 3, NULL);	// 分批加载属性数组
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, GeometryIBO);																	// 将EBO绑定到GL_ELEMENT_ARRAY_BUFFER目标
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * Constants::maxMeshTrianglesNum * 3, NULL, GL_DYNAMIC_DRAW);	// 将索引数据从CPU传输到GPU，绘制顶点还需要索引数组
@@ -155,6 +170,9 @@ void SparseSurfelFusion::DrawMesh::registerCudaResources()
 	// 法线
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat) * Constants::maxSurfelsNum));	// 设置VAO解释器
 	glEnableVertexAttribArray(1);	// layout (location = 1)
+	// 颜色
+	glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat) * Constants::maxSurfelsNum));	// 设置VAO解释器
+	glEnableVertexAttribArray(2);	// layout (location = 2)
 
 	glBindBuffer(GL_ARRAY_BUFFER, 0);			// 解绑VBO
 	glBindVertexArray(0);						// 解绑VAO
@@ -175,6 +193,7 @@ void SparseSurfelFusion::DrawMesh::mapToCuda(DeviceArrayView<Point3D<float>> Mes
 	CHECKCUDA(cudaGraphicsResourceGetMappedPointer(reinterpret_cast<void**>(&ptr), &bufferSize, cudaVBOResources));
 	CHECKCUDA(cudaMemcpyAsync(ptr, MeshVertices.RawPtr(), sizeof(Point3D<float>) * VerticesCount, cudaMemcpyDeviceToDevice, stream));
 	CHECKCUDA(cudaMemcpyAsync(ptr + Constants::maxSurfelsNum, VerticesAverageNormals.Ptr(), sizeof(Point3D<float>) * VerticesCount, cudaMemcpyDeviceToDevice, stream));
+	CHECKCUDA(cudaMemcpyAsync(ptr + 2 * Constants::maxSurfelsNum, VerticesAverageColors.Ptr(), sizeof(Point3D<float>) * VerticesCount, cudaMemcpyDeviceToDevice, stream));
 
 	unsigned int* idxPtr = NULL;
 	size_t idxBufferSize = 0;
@@ -202,7 +221,6 @@ void SparseSurfelFusion::DrawMesh::drawMesh(glm::mat4& view, glm::mat4& projecti
 	// 激活着色器
 	meshShader.BindProgram(); //renderer构造时已经编译
 
-	meshShader.SetUniformVector("objectColor", 0.7f, 0.7f, 0.7f);	// 模型灰色
 	meshShader.SetUniformVector("lightColor", 1.0f, 1.0f, 1.0f);	// 光照颜色
 	meshShader.SetUniformVector("lightPos", -1.2f, -1.0f, -2.0f);	// 光照位置
 

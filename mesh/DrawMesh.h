@@ -24,6 +24,7 @@
 #include <render/GLShaderProgram.h>
 #include <base/DeviceReadWrite/DeviceBufferArray.h>
 #include <base/Constants.h>
+#include <math/VectorUtils.h>
 
 static glm::vec3 box[68] = {
 	// x轴								x轴颜色
@@ -69,6 +70,25 @@ namespace SparseSurfelFusion {
 	namespace device {
 
 		/**
+		 * \brief GPU暴力求解KNN.
+		 */
+		struct KnnHeapDevice {
+			float4& distance;
+			uint4& index;
+
+			// 构造函数只是复制指针，类会修改它
+			__host__ __device__ KnnHeapDevice(float4& dist, uint4& node_idx) : distance(dist), index(node_idx) {}
+
+			// 更新函数
+			__host__ __device__ __forceinline__ void update(unsigned int idx, float dist);
+		};
+
+		/**
+		 * \brief 暴力求解距离顶点最近的4个采样点.
+		 */
+		__device__ __forceinline__ void bruteForceSearch4KNN(const float3& vertex, DeviceArrayView<OrientedPoint3D<float>> samplePoint, const unsigned int samplePointsCount, float4& distance, uint4& sampleIndex);
+
+		/**
 		 * \brief 向量归一化.
 		 */
 		__device__ float3 VectorNormalize(const float3& normal);
@@ -97,6 +117,11 @@ namespace SparseSurfelFusion {
 		 * \brief 通过平均邻接三角Mesh的法线，计算当前顶点的法线.
 		 */
 		__global__ void CalculateVerticesAverageNormals(const unsigned int* ConnectedTriangleNum, const Point3D<float>* VerticesNormalsSum, const unsigned int verticesCount, Point3D<float>* VerticesAverageNormals);
+
+		/**
+		 * \brief 根据顶点最近的采样点邻居计算顶点的颜色.
+		 */
+		__global__ void CalculateVerticesAverageColors(DeviceArrayView<Point3D<float>> meshVertices, DeviceArrayView<OrientedPoint3D<float>> samplePoints, const unsigned int verticesCount, const unsigned int samplePointsCount, Point3D<float>* VerticesAverageColors);
 	}
 	class DrawMesh
 	{
@@ -105,6 +130,15 @@ namespace SparseSurfelFusion {
 		~DrawMesh();
 		
 		using Ptr = std::shared_ptr<DrawMesh>;
+
+		/**
+		 * \brief 设置参数.
+		 * 
+		 * \param meshVertices 网格顶点
+		 * \param meshTriangleIndices 三角面元索引
+		 * \param samplePoints 稠密有向RGB采样点
+		 */
+		void setInput(DeviceArrayView<Point3D<float>> meshVertices, DeviceArrayView<TriangleIndex> meshTriangleIndices, DeviceArrayView<OrientedPoint3D<float>> samplePoints);
 
 		/**
 		 * \brief 计算重建三角网格的法线.
@@ -116,6 +150,15 @@ namespace SparseSurfelFusion {
 		void CalculateMeshNormals(DeviceArrayView<Point3D<float>> meshVertices, DeviceArrayView<TriangleIndex> meshTriangleIndices, cudaStream_t stream = 0);
 
 		/**
+		 * \brief 计算网格的顶点颜色，通过寻找最近的(KNN)采样点，并对其颜色加权平均.
+		 * 
+		 * \param sampleDensePoints 采样的稠密点
+		 * \param meshVertices 网格顶点
+		 * \param stream cuda流
+		 */
+		void CalculateMeshVerticesColor(DeviceArrayView<OrientedPoint3D<float>> sampleDensePoints, DeviceArrayView<Point3D<float>> meshVertices, cudaStream_t stream = 0);
+
+		/**
 		 * \brief 绘制渲染的网格.
 		 * 
 		 * \param stream cuda流
@@ -125,6 +168,7 @@ namespace SparseSurfelFusion {
 	private:
 
 		DeviceBufferArray<Point3D<float>> VerticesAverageNormals;	// 归一化的顶点平均法向量
+		DeviceBufferArray<Point3D<float>> VerticesAverageColors;		// 顶点颜色
 		DeviceBufferArray<Point3D<float>> MeshVertices;				// 网格顶点
 		DeviceBufferArray<TriangleIndex> MeshTriangleIndices;		// 网格三角面元索引
 
@@ -149,6 +193,7 @@ namespace SparseSurfelFusion {
 
 		unsigned int TranglesCount = 0;		// 传入实时顶点的数量
 		unsigned int VerticesCount = 0;		// 传入点的数量
+		unsigned int DensePointsCount = 0;	// 稠密点的数量
 
 		// 创建变换
 		glm::mat4 view = glm::mat4(1.0f);		// 确保初始化矩阵是单位矩阵

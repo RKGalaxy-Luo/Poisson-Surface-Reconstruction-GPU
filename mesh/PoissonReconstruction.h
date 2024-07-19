@@ -22,10 +22,12 @@
 #include <pcl/features/normal_3d_omp.h>
 #include <boost/thread/thread.hpp>
 
-
+#include <random>
 #include <chrono>
 #include <thread>
 #include <base/ThreadPool.h>
+#include <curand_kernel.h>
+
 #include "BuildOctree.h"
 #include "BuildMeshGeometry.h"
 #include "ComputeVectorField.h"
@@ -53,9 +55,10 @@ namespace SparseSurfelFusion {
 		 * \param coor 传入点云三维坐标
 		 * \param normal 法向量
 		 * \param surfel 坐标写入面元
+		 * \param cudaStates 用以生成随机数
 		 * \param pointsNum 面元数量
 		 */
-		__global__ void buildOrientedDenseSurfelKernel(pcl::PointXYZ* coor, pcl::Normal* normal, DepthSurfel* surfel, const unsigned int pointsNum);
+		__global__ void buildOrientedDenseSurfelKernel(pcl::PointXYZ* coor, pcl::Normal* normal, DepthSurfel* surfel, curandState* cudaStates, const unsigned int pointsNum);
 	}
 	class PoissonReconstruction
 	{
@@ -137,10 +140,14 @@ namespace SparseSurfelFusion {
 		unsigned int pointsNum = 0;
 		DeviceBufferArray<pcl::PointXYZ> PointCloudDevice;
 		DeviceBufferArray<pcl::Normal> PointNormalDevice;
+		DeviceBufferArray<float3> PointCloudColor;
 		DeviceBufferArray<DepthSurfel> DenseSurfel;
 
 		pcl::PointCloud<pcl::PointXYZ>::Ptr cloud;
 		pcl::PointCloud<pcl::Normal>::Ptr normals;
+
+		curandState* cudaStates = NULL;		// 用以生成随机数
+
 
 		/**
 		 * \brief 传入点云计算法线.

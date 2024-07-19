@@ -114,7 +114,7 @@ namespace SparseSurfelFusion {
 		PixelCoordinate pixelCoordinate;	// pixelCoordinate面元来自哪里
 		float4 VertexAndConfidence;			// VertexAndConfidence (x, y, z)为相机帧中的位置，(w)为置信度值。
 		float4 NormalAndRadius;				// NormalAndRadius (x, y, z)是归一化法线方向，w是半径
-		float4 ColorAndTime;				// ColorAndTime (x)是浮点编码的RGB值;(z)为最后一次观测时间;(w)为初始化时间
+		float4 ColorAndTime;				// ColorAndTime (x, y, z)是浮点编码的RGB值;
 	};
 
 	struct KNNAndWeight {

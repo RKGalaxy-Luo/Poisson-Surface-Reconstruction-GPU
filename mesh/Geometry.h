@@ -31,7 +31,7 @@ namespace SparseSurfelFusion {
          * \param i i∈{0, 1, 2}
          * \return 返回坐标分量
          */
-        inline const T& operator[] (int i) const { return coords[i]; }
+        __host__ __device__ __forceinline__ const T& operator[] (int i) const { return coords[i]; }
         /**
          * \brief 初始化构造函数，点坐标均为0.
          *
@@ -78,10 +78,14 @@ namespace SparseSurfelFusion {
             return *this;
         }
     };
+    /**
+     * \brief 有向RGB采样点.
+     */
     template<class T>
     struct OrientedPoint3D {
         Point3D<T> point;   // 有向点坐标
         Point3D<T> normal;  // 有向点法线
+        Point3D<T> color;   // 采样点颜色
     };
     /**
      * \brief OP向量长度平方 = x^2 + y^2 + z^2.

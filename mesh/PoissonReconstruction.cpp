@@ -26,6 +26,7 @@ SparseSurfelFusion::PoissonReconstruction::PoissonReconstruction()
 	DenseSurfel.AllocateBuffer(MAX_SURFEL_COUNT);
 	PointNormalDevice.AllocateBuffer(MAX_SURFEL_COUNT);
 	PointCloudDevice.AllocateBuffer(MAX_SURFEL_COUNT);
+	PointCloudColor.AllocateBuffer(MAX_SURFEL_COUNT);
 }
 
 SparseSurfelFusion::PoissonReconstruction::~PoissonReconstruction()
@@ -34,6 +35,7 @@ SparseSurfelFusion::PoissonReconstruction::~PoissonReconstruction()
 	DenseSurfel.ReleaseBuffer();
 	PointNormalDevice.ReleaseBuffer();
 	PointCloudDevice.ReleaseBuffer();
+	PointCloudColor.ReleaseBuffer();
 }
 
 void SparseSurfelFusion::PoissonReconstruction::initCudaStream()
@@ -84,6 +86,9 @@ void SparseSurfelFusion::PoissonReconstruction::readPCDFile(std::string path)
 
 	pcl::io::loadPCDFile(path, *cloud);
 	CalculatePointCloudNormal(cloud, normals);
+
+	CHECKCUDA(cudaMalloc((void**)&cudaStates, cloud->size() * sizeof(curandState)));
+
 	printf("点云数量 = %zu   法线数量 = %zu\n", cloud->size(), normals->size());
 	std::cout << std::endl;
 	std::cout << "-----------------------------------------------------" << std::endl;	// 输出
@@ -151,7 +156,7 @@ void SparseSurfelFusion::PoissonReconstruction::CalculatePointCloudNormal(pcl::P
 	// 计算执行时间（以ms为单位）
 	std::chrono::duration<double, std::milli> duration = end - start;
 	// 输出执行时间
-	std::cout << "法线计算时间: " << duration.count() / 60000.0f << " 分钟" << std::endl;
+	std::cout << "法线计算时间: " << duration.count() << " ms" << std::endl;
 
 	saveCloudWithNormal(cloud, normals);
 
@@ -244,7 +249,12 @@ void SparseSurfelFusion::PoissonReconstruction::DrawRebuildMesh()
 {
 	DeviceArrayView<Point3D<float>> MeshVertices = TriangleIndicesPtr->GetRebuildMeshVertices();
 	DeviceArrayView<TriangleIndex> MeshTriangleIndices = TriangleIndicesPtr->GetRebuildMeshTriangleIndices();
-	DrawConstructedMesh->CalculateMeshNormals(MeshVertices, MeshTriangleIndices, MeshStream[0]);
+	DeviceArrayView<OrientedPoint3D<float>> SampleDensePoints = OctreePtr->GetOrientedPoints();
+	DrawConstructedMesh->setInput(MeshVertices, MeshTriangleIndices, SampleDensePoints);
+	DrawConstructedMesh->CalculateMeshVerticesColor(SampleDensePoints, MeshVertices, MeshStream[0]); // 并行进行
+	DrawConstructedMesh->CalculateMeshNormals(MeshVertices, MeshTriangleIndices, MeshStream[1]);	 // 并行进行
+	CHECKCUDA(cudaStreamSynchronize(MeshStream[0]));	 // 两个流同步
+	CHECKCUDA(cudaStreamSynchronize(MeshStream[1]));	 // 两个流同步
 	DrawConstructedMesh->DrawRenderedMesh(MeshStream[0]);
 	CHECKCUDA(cudaDeviceSynchronize());
 }

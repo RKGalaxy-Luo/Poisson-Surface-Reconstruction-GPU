@@ -347,7 +347,7 @@ namespace SparseSurfelFusion {
 		DeviceArrayView<int> GetPoint2NodeArray() { return Point2NodeArray.ArrayView(); }		
 
 		/**
-		 * \brief 获得稠密点转成的有向采样点.
+		 * \brief 获得稠密点转成的有向RGB采样点.
 		 * 
 		 * \return 稠密点转成的有向采样点.
 		 */

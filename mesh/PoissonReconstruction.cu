@@ -17,7 +17,7 @@ __global__ void SparseSurfelFusion::device::buildDenseSurfelKernel(pcl::PointXYZ
 	surfel[idx].VertexAndConfidence.w = 0;
 }
 
-__global__ void SparseSurfelFusion::device::buildOrientedDenseSurfelKernel(pcl::PointXYZ* coor, pcl::Normal* normal, DepthSurfel* surfel, const unsigned int pointsNum)
+__global__ void SparseSurfelFusion::device::buildOrientedDenseSurfelKernel(pcl::PointXYZ* coor, pcl::Normal* normal, DepthSurfel* surfel, curandState* cudaStates, const unsigned int pointsNum)
 {
 	unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= pointsNum) return;
@@ -30,6 +30,13 @@ __global__ void SparseSurfelFusion::device::buildOrientedDenseSurfelKernel(pcl::
 	surfel[idx].NormalAndRadius.y = normal[idx].normal_y;
 	surfel[idx].NormalAndRadius.z = normal[idx].normal_z;
 	surfel[idx].NormalAndRadius.w = normal[idx].curvature;
+
+	// ³õÊ¼»¯CURAND×´Ì¬
+	curand_init(1234, idx, 0, &cudaStates[idx]);
+	surfel[idx].ColorAndTime.x = curand_uniform(&cudaStates[idx]);
+	surfel[idx].ColorAndTime.y = curand_uniform(&cudaStates[idx]);
+	surfel[idx].ColorAndTime.z = curand_uniform(&cudaStates[idx]);
+	surfel[idx].ColorAndTime.w = curand_uniform(&cudaStates[idx]);
 }
 
 void SparseSurfelFusion::PoissonReconstruction::buildDenseSurfel(DeviceBufferArray<pcl::PointXYZ>& PointCloudDevice, DeviceBufferArray<DepthSurfel>& DenseSurfel, cudaStream_t stream)
@@ -45,5 +52,5 @@ void SparseSurfelFusion::PoissonReconstruction::buildDenseSurfel(DeviceBufferArr
 	const unsigned int PointsNum = PointCloudDevice.ArrayView().Size();
 	dim3 block(128);
 	dim3 grid(divUp(PointsNum, block.x));
-	device::buildOrientedDenseSurfelKernel << <grid, block, 0, stream >> > (PointCloudDevice.Array().ptr(), PointNormalDevice.Array().ptr(), DenseSurfel.Array().ptr(), PointsNum);
+	device::buildOrientedDenseSurfelKernel << <grid, block, 0, stream >> > (PointCloudDevice.Array().ptr(), PointNormalDevice.Array().ptr(), DenseSurfel.Array().ptr(), cudaStates, PointsNum);
 }
