@@ -149,8 +149,6 @@ __global__ void SparseSurfelFusion::device::VerticesNormalsSumKernel(const Point
 	atomicAdd(&VerticesNormalsSum[indicesArray[idx].idx[2]].coords[0], meshNormals[idx].coords[0]);
 	atomicAdd(&VerticesNormalsSum[indicesArray[idx].idx[2]].coords[1], meshNormals[idx].coords[1]);
 	atomicAdd(&VerticesNormalsSum[indicesArray[idx].idx[2]].coords[2], meshNormals[idx].coords[2]);
-	//if (idx % 100 == 0) printf("ScaledVerticesNormalsSum[%d] = (%.10f, %.10f, %.10f)\n", idx, meshNormals[idx].coords[0], meshNormals[idx].coords[1], meshNormals[idx].coords[2]);
-	//if (idx % 100 == 0) printf("ScaledVerticesNormalsSum[%d] = (%.10f, %.10f, %.10f)\n", idx, ScaledVerticesNormalsSum[idx].coords[0], ScaledVerticesNormalsSum[idx].coords[1], ScaledVerticesNormalsSum[idx].coords[2]);
 }
 
 __global__ void SparseSurfelFusion::device::CalculateVerticesAverageNormals(const unsigned int* ConnectedTriangleNum, const Point3D<float>* VerticesNormalsSum, const unsigned int verticesCount, Point3D<float>* VerticesAverageNormals)
@@ -176,8 +174,6 @@ __global__ void SparseSurfelFusion::device::CalculateVerticesAverageNormals(cons
 	VerticesAverageNormals[idx].coords[0] = NormalizedAverageNormal.x;
 	VerticesAverageNormals[idx].coords[1] = NormalizedAverageNormal.y;
 	VerticesAverageNormals[idx].coords[2] = NormalizedAverageNormal.z;
-	//if (idx % 1000 == 0) printf("NormalizedAverageNormals[%d] = (%.10f, %.10f, %.10f)\n", idx, NormalizedAverageNormal.x, NormalizedAverageNormal.y, NormalizedAverageNormal.z);
-
 }
 
 __global__ void SparseSurfelFusion::device::CalculateVerticesAverageColors(DeviceArrayView<Point3D<float>> meshVertices, DeviceArrayView<OrientedPoint3D<float>> samplePoints, const unsigned int verticesCount, const unsigned int samplePointsCount, Point3D<float>* VerticesAverageColors)
@@ -267,6 +263,8 @@ void SparseSurfelFusion::DrawMesh::CalculateMeshVerticesColor(DeviceArrayView<Or
 #ifdef CHECK_MESH_BUILD_TIME_COST
 	auto time1 = std::chrono::high_resolution_clock::now();					// 记录开始时间点
 #endif // CHECK_MESH_BUILD_TIME_COST
+
+	VerticesAverageColors.ResizeArrayOrException(VerticesCount);
 
 	dim3 block(256);
 	dim3 grid(divUp(VerticesCount, block.x));

@@ -168,7 +168,7 @@ namespace SparseSurfelFusion {
 	private:
 
 		DeviceBufferArray<Point3D<float>> VerticesAverageNormals;	// 归一化的顶点平均法向量
-		DeviceBufferArray<Point3D<float>> VerticesAverageColors;		// 顶点颜色
+		DeviceBufferArray<Point3D<float>> VerticesAverageColors;	// 顶点颜色
 		DeviceBufferArray<Point3D<float>> MeshVertices;				// 网格顶点
 		DeviceBufferArray<TriangleIndex> MeshTriangleIndices;		// 网格三角面元索引
 
