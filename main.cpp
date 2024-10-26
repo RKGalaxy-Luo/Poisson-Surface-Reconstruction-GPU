@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
 	PoissonRecon.readPCDFile(PcdDataPath);
 	size_t Frame = 0;
 	double averageRuntime = 0;
-	while (true) {
+	while (Frame < 500) {
 		if (_kbhit()) { // 如果有按键按下，则_kbhit()函数返回真
 			int ch = _getch();// 使用_getch()函数获取按下的键值
 			if (ch == ESC_KEY) {

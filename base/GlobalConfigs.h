@@ -4,8 +4,8 @@
 
 #define CUB_IGNORE_DEPRECATED_API
 
-#define MAX_SURFEL_COUNT 200000			// 最大面元个数
-#define MAX_MESH_TRIANGLE_COUNT 600000	// 最大网格三角形数量
+#define MAX_SURFEL_COUNT 300000			// 最大面元个数
+#define MAX_MESH_TRIANGLE_COUNT 1000000	// 最大网格三角形数量
 
 #define FORCE_UNIT_NORMALS 1
 
@@ -17,13 +17,15 @@
 
 #define DIMENSION 3
 
-#define TxTDataPath "E:/PoissonReconstructionGPU/PoissonSurfaceReconstructionGPU/Poisson-Surface-Reconstruction-GPU/PointCloudData/data_txt/bunny.txt"
+#define TxTDataPath "./PointCloudData/data_txt/bunny.txt"
 
-#define PlyDataPath "E:/PoissonReconstructionGPU/PoissonSurfaceReconstructionGPU/Poisson-Surface-Reconstruction-GPU/OutputResult/bunny.ply"
+#define PlyDataPath "./OutputResult/bunny.ply"
 
-#define PcdDataPath "E:/PoissonReconstructionGPU/PoissonSurfaceReconstructionGPU/Poisson-Surface-Reconstruction-GPU/PointCloudData/data_pcd_without_normal/bunny.pcd"
+#define PcdDataPath "./PointCloudData/data_pcd_without_normal/bunny.pcd"
 
-#define PlySavePath "E:/PoissonReconstructionGPU/PoissonSurfaceReconstructionGPU/Poisson-Surface-Reconstruction-GPU/PointCloudData/data_ply_normal/bunny/bunny.ply"
+#define PlySavePath "./PointCloudData/data_ply_normal/bunny/bunny.ply"
+
+#define SHADER_PATH_PREFIX "./render/shaders/"
 
 #define ESC_KEY 27
 
@@ -53,7 +55,6 @@
 #define WINDOW_WIDTH 1728
 #define WINDOW_HEIGHT 972
 
-#define SHADER_PATH_PREFIX "E:/PoissonReconstructionGPU/PoissonSurfaceReconstructionGPU/Poisson-Surface-Reconstruction-GPU/render/shaders/"
 
 //#define ROUND_EPS float(1e-5)
 //#define maxDepth 8

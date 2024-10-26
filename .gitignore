@@ -15,6 +15,7 @@
 *.vcxproj.user
 *.hint
 *.ply
+*.pcd
 glad.c
 glad.h
 
