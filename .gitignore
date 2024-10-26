@@ -30,6 +30,9 @@ mono_crash.*
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
+dll/
+bin/
+bintemp/
 x64/
 x86/
 include/
