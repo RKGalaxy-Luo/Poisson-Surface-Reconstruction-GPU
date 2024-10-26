@@ -8,7 +8,6 @@
 #pragma once
 #include <cuda_runtime_api.h>
 #include <device_launch_parameters.h>
-#include <thrust/device_vector.h>
 #include <base/ThreadPool.h>
 #include <base/DeviceReadWrite/DeviceBufferArray.h>
 #include <mesh/Geometry.h>

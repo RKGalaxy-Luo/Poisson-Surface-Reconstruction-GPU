@@ -6,12 +6,10 @@
  * \date   June 3rd 2024
  *********************************************************************/
 #include "ComputeTriangleIndices.h"
-#if defined(__CUDACC__)		//如果由NVCC编译器编译
+#if defined(__CUDACC__)		// 如果由NVCC编译器编译
 #include <cub/cub.cuh>
 #endif
 #include <thrust/device_ptr.h>
-#include <thrust/host_vector.h>
-#include <thrust/device_vector.h>
 #include <thrust/copy.h>
 namespace SparseSurfelFusion {
 
@@ -960,7 +958,6 @@ __global__ void SparseSurfelFusion::device::computeSubdivideVertexImplicitFuncti
     const unsigned int idx = threadIdx.x + blockDim.x * blockIdx.x;
     if (idx >= SubdivideVertexArraySize)	return;
     VertexNode nowVertex = SubdivideVertexArray[idx];
-    int depth = device::maxDepth;
     float val = 0.0f;
     int nowNode = nowVertex.ownerNodeIdx;
     if (nowNode > 0) {
@@ -1292,7 +1289,7 @@ void SparseSurfelFusion::ComputeTriangleIndices::generateSubdivideNodeArrayCount
     int* SubdivideNodeNum = NULL;
     CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&SubdivideNodeNum), sizeof(int), stream));
 
-    ////// 这里无法使用cub::DeviceSelect::Flagged，调用API会导致共享内存溢出，主要是设置L1 Cache 和 Share Memory的比例
+    //// 这里无法使用cub::DeviceSelect::Flagged，调用API会导致共享内存溢出，主要是设置L1 Cache 和 Share Memory的比例
     //int* SubdivideNodeNumPtr = NULL;
     //CHECKCUDA(cudaMallocAsync(reinterpret_cast<void**>(&SubdivideNodeNumPtr), sizeof(int), stream));
     //void* d_temp_storage = NULL;
@@ -1304,8 +1301,10 @@ void SparseSurfelFusion::ComputeTriangleIndices::generateSubdivideNodeArrayCount
     //CHECKCUDA(cudaStreamSynchronize(stream));
 
     // thrust::cuda::par.on(stream) -> 诠释Thrust库执行策略是以流的形式
-    thrust::device_ptr<OctNode> NodeArray_ptr = thrust::device_pointer_cast<OctNode>(NodeArray.Array().ptr());
-    thrust::device_ptr<OctNode> SubdivideNode_ptr = thrust::device_pointer_cast<OctNode>(SubdivideNode.Array().ptr());
+    auto NodeArrayPtr = NodeArray.Array().ptr();
+    auto SubdivedeNodePtr = SubdivideNode.Array().ptr();
+    thrust::device_ptr<OctNode> NodeArray_ptr = thrust::device_pointer_cast<OctNode>(NodeArrayPtr);
+    thrust::device_ptr<OctNode> SubdivideNode_ptr = thrust::device_pointer_cast<OctNode>(SubdivedeNodePtr);
     thrust::device_ptr<OctNode> SubdivideNode_end = thrust::copy_if(thrust::cuda::par.on(stream), NodeArray_ptr, NodeArray_ptr + OtherDepthNodeCount, SubdivideNode_ptr, ifSubdivide());
     CHECKCUDA(cudaStreamSynchronize(stream));
     SubdivideNodeNumHost = SubdivideNode_end - SubdivideNode_ptr;

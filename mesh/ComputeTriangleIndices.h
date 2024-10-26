@@ -10,6 +10,7 @@
 #include <base/DeviceReadWrite/SynchronizeArray.h>
 #include <base/DeviceReadWrite/DeviceBufferArray.h>
 #include <base/GlobalConfigs.h>
+
 #include "ConfirmedPPolynomial.h"
 #include "OctNode.cuh"
 

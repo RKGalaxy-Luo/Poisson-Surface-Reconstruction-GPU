@@ -7,9 +7,6 @@
  *********************************************************************/
 #pragma once
 #include <chrono>
-#include <thrust/reduce.h>
-#include <thrust/device_ptr.h>
-#include <thrust/sort.h>
 #include <cuda_runtime_api.h>
 #include <device_launch_parameters.h>
 #include <mesh/BuildOctree.h>
